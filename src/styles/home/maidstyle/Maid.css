@@ -1,0 +1,139 @@
+/* 看板娘组件样式 */
+.maid-widget {
+  position: fixed;
+  right: 0px;
+  bottom: 0px;
+  width: 25vw;
+  height: 50vh;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  color: inherit;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: visible;
+  z-index: 50;
+  cursor: grab;
+}
+
+.maid-dragging {
+	cursor: grabbing;
+}
+
+.maid-header { display: none; }
+
+.maid-title {
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.2px;
+}
+
+.maid-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.maid-btn {
+	width: 28px;
+	height: 28px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 8px;
+	border: 1px solid #d0d7de;
+	background: white;
+	color: #24292f;
+	font-size: 14px;
+	line-height: 1;
+	transition: all .15s ease;
+}
+
+.maid-btn:hover {
+	background: #f6f8fa;
+	transform: translateY(-1px);
+}
+
+.maid-btn:active {
+	transform: translateY(0);
+}
+
+.maid-body { display: none; }
+
+.maid-canvas-wrap {
+	position: absolute;
+	inset: 0;
+}
+
+.maid-status,
+.maid-error {
+	position: absolute;
+	left: 12px;
+	top: 12px;
+	padding: 4px 8px;
+	font-size: 12px;
+	border-radius: 6px;
+	background: rgba(255,255,255,0.9);
+	border: 1px solid #d0d7de;
+	color: #24292f;
+}
+
+.maid-error {
+	color: #b42318;
+	background: #fee4e2;
+	border-color: #fecdca;
+}
+
+.maid-hint { display: none; }
+
+/* 收起态 */
+.maid-collapsed {
+	width: 64px;
+	height: 64px;
+	border-radius: 50%;
+	padding: 0;
+}
+
+.maid-collapsed .maid-header {
+	height: 64px;
+	border-bottom: none;
+	border-radius: 50%;
+	justify-content: center;
+}
+
+.maid-collapsed .maid-title,
+.maid-collapsed .maid-actions .maid-btn:nth-child(1),
+.maid-collapsed .maid-actions .maid-btn:nth-child(2) {
+	display: none;
+}
+
+.maid-collapsed .maid-actions .maid-btn:nth-child(3) {
+	width: 40px;
+	height: 40px;
+	font-size: 18px;
+}
+
+.maid-collapsed .maid-body {
+	display: none;
+}
+
+/* 响应式 */
+@media (max-width: 480px) {
+	.maid-widget {
+		width: 260px;
+		height: 360px;
+		right: 12px;
+		bottom: 12px;
+	}
+}
+
+@media (max-width: 360px) {
+	.maid-widget {
+		width: 220px;
+		height: 320px;
+		right: 10px;
+		bottom: 10px;
+	}
+}

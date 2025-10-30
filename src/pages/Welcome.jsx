@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import '../components/welcome/styles/Welcome.css';
+import '../styles/welcome/Welcome.css';
 
 export default function Welcome() {
   const navigate = useNavigate();

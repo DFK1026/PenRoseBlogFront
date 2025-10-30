@@ -18,7 +18,23 @@
 			"A苹果小狐狸.4096/texture_12.png"
 		],
 		"Physics": "A苹果小狐狸.physics3.json",
-		"DisplayInfo": "A苹果小狐狸.cdi3.json"
+		"DisplayInfo": "A苹果小狐狸.cdi3.json",
+		"Motions": {
+			"Idle": [
+				{
+					"File": "待机动画.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			],
+			"待机动画": [
+				{
+					"File": "待机动画.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			]
+		}
 	},
 	"Groups": [
 		{
