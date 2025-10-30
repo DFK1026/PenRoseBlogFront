@@ -67,6 +67,13 @@
 	inset: 0;
 }
 
+/* 确保 Pixi Canvas 与容器像素对齐，避免缩放引入的模糊 */
+.maid-canvas-wrap canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
 .maid-status,
 .maid-error {
 	position: absolute;
@@ -87,6 +94,43 @@
 }
 
 .maid-hint { display: none; }
+
+/* 清晰度控制器 */
+.maid-controls {
+	position: absolute;
+	right: 12px;
+	top: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px;
+	border: 1px solid #d0d7de;
+	background: rgba(255,255,255,0.9);
+	color: #24292f;
+	border-radius: 8px;
+	z-index: 51;
+  flex-wrap: wrap;
+}
+
+.maid-controls-label {
+	font-size: 12px;
+	color: #57606a;
+}
+
+.maid-select {
+	font-size: 12px;
+	padding: 2px 6px;
+	border-radius: 6px;
+	border: 1px solid #d0d7de;
+	background: white;
+	color: #24292f;
+}
+
+/* 大小滑块样式，与选择器风格一致 */
+.maid-range {
+  width: 120px;
+  accent-color: #40c2a4;
+}
 
 /* 收起态 */
 .maid-collapsed {
