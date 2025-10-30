@@ -1,0 +1,35 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "A苹果小狐狸.moc3",
+		"Textures": [
+			"A苹果小狐狸.4096/texture_00.png",
+			"A苹果小狐狸.4096/texture_01.png",
+			"A苹果小狐狸.4096/texture_02.png",
+			"A苹果小狐狸.4096/texture_03.png",
+			"A苹果小狐狸.4096/texture_04.png",
+			"A苹果小狐狸.4096/texture_05.png",
+			"A苹果小狐狸.4096/texture_06.png",
+			"A苹果小狐狸.4096/texture_07.png",
+			"A苹果小狐狸.4096/texture_08.png",
+			"A苹果小狐狸.4096/texture_09.png",
+			"A苹果小狐狸.4096/texture_10.png",
+			"A苹果小狐狸.4096/texture_11.png",
+			"A苹果小狐狸.4096/texture_12.png"
+		],
+		"Physics": "A苹果小狐狸.physics3.json",
+		"DisplayInfo": "A苹果小狐狸.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}

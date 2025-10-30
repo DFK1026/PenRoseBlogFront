@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import '../components/welcome/styles/Welcome.css';
 
 export default function Welcome() {
+  const navigate = useNavigate();
   const [showRegister, setShowRegister] = useState(false);
-  // 页面加载时自动填充用户名和密码
+
+  //记住我勾选状态，携带token，jwt鉴权
+  const [rememberMe, setRememberMe] = useState(() => {
+    return !!localStorage.getItem('rememberLogin');
+  });
+
+  //页面加载时自动填充用户名和密码
   const [loginData, setLoginData] = useState(() => {
     const saved = localStorage.getItem('rememberLogin');
     if (saved) {
@@ -16,6 +24,8 @@ export default function Welcome() {
     }
     return { username: '', password: '' };
   });
+
+  //注册表单的数据管理
   const [registerData, setRegisterData] = useState({
     username: '',
     password: '',
@@ -23,16 +33,12 @@ export default function Welcome() {
     nickname: '',
     gender: '',
   });
-  // 记住我勾选状态
-  const [rememberMe, setRememberMe] = useState(() => {
-    return !!localStorage.getItem('rememberLogin');
-  });
 
-  // 消息内容和类型（success/error）
+  //消息内容和类型（success/error）
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' | 'error'
 
-  // 登录表单提交
+  //登录表单提交
   const handleLogin = async (e) => {
     e.preventDefault();
     setMessage('');
@@ -53,19 +59,21 @@ export default function Welcome() {
         } else {
           localStorage.removeItem('rememberLogin');
         }
+        // 跳转到主页
+        navigate('/home');
       }
     } catch (err) {
       if (err.response && err.response.data && err.response.data.message) {
         setMessage(err.response.data.message);
         setMessageType('error');
       } else {
-        setMessage('网络错误，请稍后重试');
+        setMessage('服务器错误');
         setMessageType('error');
       }
     }
   };
 
-  // 注册表单提交
+  //注册表单提交
   const handleRegister = async (e) => {
     e.preventDefault();
     setMessage('');
@@ -114,7 +122,7 @@ export default function Welcome() {
         setMessage(err.response.data.message);
         setMessageType('error');
       } else {
-        setMessage('网络错误，请稍后重试');
+        setMessage('服务器错误');
         setMessageType('error');
       }
     }

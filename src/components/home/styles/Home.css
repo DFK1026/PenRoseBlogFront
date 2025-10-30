@@ -1,0 +1,9 @@
+body.home-bg {
+  background: #c6ecf6;
+}
+
+.home-container {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+}
