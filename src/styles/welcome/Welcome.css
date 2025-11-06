@@ -16,6 +16,7 @@
   justify-content: center;
   align-items: center;
 }
+/* 页面背景固定为默认色（不随性别变化） */
 
 /* 登录注册核心面板，对应 <div className="welcome">，包含左右面板和粉色登录/注册框 */
 .welcome {
@@ -35,7 +36,9 @@
   left: 5%;
   background: #eac7cc;
   width: 320px;
-  height: 500px;
+  height: auto;            /* 自适应内容高度 */
+  min-height: 560px;       /* 保证包含性别选择与按钮 */
+  padding-bottom: 16px;    /* 与底部按钮留间距 */
   border-radius: 5px;
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
   transition: all 0.5s ease-in-out;
@@ -75,11 +78,16 @@
 h1 {
   font-family: "Open Sans", sans-serif;
   text-align: center;
-  margin-top: 95px;
+  margin-top: 72px;
   text-transform: uppercase;
   color: #f6f6f6;
   font-size: 2em;
   letter-spacing: 8px;
+}
+/* 注册表单标题上移并斜体 */
+.signup h1 {
+  margin-top: 16px;
+  font-style: italic;
 }
 
 /* 左右面板标题样式 */
@@ -174,6 +182,37 @@ form {
   padding-top: 7px;
 }
 
+/* 注册表单：两列布局（左：输入 2/3，右：性别 1/3） */
+.signup .form-grid {
+  display: grid;
+  grid-template-columns: 1fr;            /* 单列 */
+  grid-template-rows: auto auto;         /* 按内容自适应高度，去掉中部空隙 */
+  row-gap: 12px;
+  width: 90%;
+  max-width: 520px;
+  margin: 0 auto;
+  align-items: stretch;
+  min-height: unset;                     /* 不强制高度，避免把第二行挤到底部 */
+}
+
+.signup .form-fields { position: relative; z-index: 1; }
+.signup .form-gender { justify-self: stretch; align-self: start; width: 100%; margin-top: 8px; display: flex; justify-content: center; }
+
+.signup .form-fields input {
+  width: 100%;
+  background: transparent;
+}
+
+.signup .form-fields input + input {
+  margin-top: 10px; /* 输入框间隔 */
+}
+
+/* 注册表单输入占位符：英文斜体，中文楷体（按系统可用字体回退） */
+.signup input::placeholder {
+  font-style: italic;
+  font-family: "Open Sans", "KaiTi", "STKaiti", "Kaiti SC", serif;
+}
+
 /* 登录表单额外内边距 */
 .more-padding {
   padding-top: 35px;
@@ -264,14 +303,110 @@ input[type=checkbox] {
   transition: 0.5s all ease;
 }
 
-/* 性别选择下拉框样式 */
-.gender-select {
-  width: 50%;
-  margin: 8px 0;
-  padding: 9px;
-  background: #eac7cc;
-  color: #ce7d88;
-  border: none;
-  border-bottom: 1px solid rgba(246,246,246,0.5);
-  font-size: 1em;
+
+/* =====================
+   性别选择：图片选项卡样式（来自 gender.html，已范围化命名）
+   ===================== */
+.gender-selector {
+  width: 90%;                /* 在表单中居中，不占满 */
+  max-width: 360px;          /* 控制选择框宽度，便于居中 */
+  background-color: #fff;
+  box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  margin: 8px auto 0;
+  border-radius: 6px;
+}
+
+.gender-top {
+  width: 100%;
+  height: 84px; /* 进一步缩小，减少占位 */
+  border-bottom: 1px solid rgba(223, 223, 223);
+  overflow: hidden;
+}
+
+.gender-main {
+  width: 300%;
+  height: 100%;
+  display: flex;
+  position: relative;
+  transition: left .3s;
+  left: 0;
+  margin: 0;           /* 去掉 ul 默认外边距，避免整体偏移 */
+  padding: 0;          /* 去掉 ul 默认内边距，确保完全居中 */
+  list-style: none;    /* 清除列表符号 */
+}
+.gender-main li { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.gender-figure { height: 60px; display: flex; align-items: center; justify-content: center; }
+.gender-figure img { max-height: 56px; width: auto; display: block; object-fit: contain; }
+
+/* 移除性别预览下方的灰色装饰线条 */
+
+.gender-bottom {
+  width: 100%;
+  display: grid;                           /* 3 等分栅格，天然居中 */
+  grid-template-columns: repeat(3, 1fr);
+  justify-items: center;
+  align-items: center;
+  column-gap: 0;
+  height: 56px;                            /* 为文字留空间 */
+  margin: 0;                                /* 去掉 UL 默认外边距 */
+  padding: 0;                               /* 去掉 UL 默认内边距（否则会整体偏左） */
+  list-style: none;
+}
+
+.gender-item {
+  height: 100%;
+  width: 100%;                              /* 占满各自单元格 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  filter: grayscale(0.5);
+  list-style: none;
+}
+
+.gender-item.active {
+  filter: none;
+}
+.gender-item.active .gender-btn { background: rgba(234, 199, 204, 0.5); border-radius: 16px; padding: 4px 6px; }
+
+.gender-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  flex-direction: column; /* 图标 + 文本垂直排列 */
+  gap: 4px;
+}
+
+.gender-bottom img { width: 22px; display: block; }
+
+.gender-text {
+  font-size: 10px;
+  color: #8e9aaf;
+}
+
+/* 注册提交按钮与上方内容的距离更紧凑，避免溢出 */
+.button.submit {
+  margin-top: 16px;
+}
+
+/* .visually-hidden 未在当前页面使用，已移除对应标记 */
+.pinkbox {
+  transition: background-color 0.35s ease-in-out, transform 0.5s ease-in-out;
+}
+/* 移除面板随性别变化的样式，固定不透明背景 */
+.pinkbox { background-image: none; }
+
+@media (max-width: 420px) {
+  .signup .form-grid {
+    grid-template-columns: 1fr;
+    row-gap: 12px;
+  }
+  .gender-selector { width: 85%; }
 }

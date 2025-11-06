@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import '../styles/welcome/Welcome.css';
@@ -37,6 +37,24 @@ export default function Welcome() {
   //消息内容和类型（success/error）
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' | 'error'
+
+  // 提示信息在展示后2秒自动消失
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => {
+      setMessage('');
+      setMessageType('');
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  // 性别选择资源与当前选中索引（基于 registerData.gender 推导，未选择时展示第一个）
+  const genderItems = [
+    { key: '男', img: '/imgs/loginandwelcomepanel/1.png' },
+    { key: '女', img: '/imgs/loginandwelcomepanel/2.png' },
+    { key: '保密', img: '/imgs/loginandwelcomepanel/3.png' },
+  ];
+  const selectedGenderIndex = Math.max(0, genderItems.findIndex(g => g.key === registerData.gender));
 
   //登录表单提交
   const handleLogin = async (e) => {
@@ -130,23 +148,52 @@ export default function Welcome() {
 
   return (
     <div className="container">
-      <div className="welcome">
-  <div className={`pinkbox${showRegister ? ' show-register' : ''}` }>
+    <div className="welcome">
+  <div className={`pinkbox${showRegister ? ' show-register' : ''}`}>
           {/* 注册 */}
           <div className={`signup${showRegister ? '' : ' nodisplay'}`}>
             <h1>Register</h1>
             <form autoComplete="off" onSubmit={handleRegister}>
-              <input type="text" placeholder="Username" value={registerData.username} onChange={e => setRegisterData({ ...registerData, username: e.target.value })} />
-              <input type="password" placeholder="Password" value={registerData.password} onChange={e => setRegisterData({ ...registerData, password: e.target.value })} />
-              <input type="password" placeholder="Confirm Password" value={registerData.confirmPassword} onChange={e => setRegisterData({ ...registerData, confirmPassword: e.target.value })} />
-              <input type="text" placeholder="Nickname (最长25字)" value={registerData.nickname} onChange={e => setRegisterData({ ...registerData, nickname: e.target.value })} />
-              <select value={registerData.gender} onChange={e => setRegisterData({ ...registerData, gender: e.target.value })} className="gender-select">
-                <option value="">选择性别</option>
-                <option value="男">男</option>
-                <option value="女">女</option>
-                <option value="保密">保密</option>
-              </select>
-
+              <div className="form-grid">
+                <div className="form-fields">
+                  <input type="text" placeholder="Username" value={registerData.username} onChange={e => setRegisterData({ ...registerData, username: e.target.value })} />
+                  <input type="password" placeholder="Password" value={registerData.password} onChange={e => setRegisterData({ ...registerData, password: e.target.value })} />
+                  <input type="password" placeholder="Confirm Password" value={registerData.confirmPassword} onChange={e => setRegisterData({ ...registerData, confirmPassword: e.target.value })} />
+                  <input type="text" placeholder="Nickname (最长25字)" value={registerData.nickname} onChange={e => setRegisterData({ ...registerData, nickname: e.target.value })} />
+                </div>
+                {/* 性别选择（图片选项卡样式） */}
+                <div className="form-gender">
+                  <div className="gender-selector" role="group" aria-label="Gender">
+                    <div className="gender-top">
+                      <ul className="gender-main" style={{ left: `${selectedGenderIndex * -100}%` }}>
+                        {genderItems.map(item => (
+                          <li key={item.key}>
+                            <div className="gender-figure">
+                              <img src={item.img} alt={item.key} />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <ul className="gender-bottom">
+                      {genderItems.map((item, idx) => (
+                        <li key={item.key} className={`gender-item${selectedGenderIndex === idx ? ' active' : ''}`}>
+                          <button
+                            type="button"
+                            className="gender-btn"
+                            onClick={() => setRegisterData({ ...registerData, gender: item.key })}
+                            aria-pressed={selectedGenderIndex === idx}
+                            aria-label={item.key}
+                          >
+                            <img src={item.img} alt={item.key} />
+                            <span className="gender-text">{item.key}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
               <button className="button submit" type="submit">Create Account</button>
             </form>
           </div>
@@ -165,7 +212,13 @@ export default function Welcome() {
           </div>
           {/* 错误/成功提示信息，样式区分 */}
           {message && (
-            <p className={`form-message ${messageType === 'error' ? 'error-message' : messageType === 'success' ? 'success-message' : ''}`}>{message}</p>
+            <p
+              role="alert"
+              aria-live="polite"
+              className={`form-message ${messageType === 'error' ? 'error-message' : messageType === 'success' ? 'success-message' : ''}`}
+            >
+              {message}
+            </p>
           )}
         </div>
         <div className="leftbox">

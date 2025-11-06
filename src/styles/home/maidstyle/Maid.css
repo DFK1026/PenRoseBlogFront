@@ -1,5 +1,6 @@
-/* 看板娘组件样式 */
+/*看板娘面板*/
 .maid-widget {
+	--maid-bar-h: 40px;
   position: fixed;
   right: 0px;
   bottom: 0px;
@@ -13,109 +14,92 @@
   color: inherit;
   -webkit-user-select: none;
   user-select: none;
-  overflow: visible;
-  z-index: 50;
+	/* 允许左侧外溢以显示表情面板 */
+	overflow: visible;
+  z-index: 999;
   cursor: grab;
 }
-
+/*拖拽样式*/
 .maid-dragging {
 	cursor: grabbing;
 }
 
-.maid-header { display: none; }
-
-.maid-title {
-	font-size: 14px;
-	font-weight: 600;
-	letter-spacing: 0.2px;
-}
-
-.maid-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.maid-btn {
-	width: 28px;
-	height: 28px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 8px;
-	border: 1px solid #d0d7de;
-	background: white;
-	color: #24292f;
-	font-size: 14px;
-	line-height: 1;
-	transition: all .15s ease;
-}
-
-.maid-btn:hover {
-	background: #f6f8fa;
-	transform: translateY(-1px);
-}
-
-.maid-btn:active {
-	transform: translateY(0);
-}
-
-.maid-body { display: none; }
-
+/* 画布区域避让底部控制条 */
 .maid-canvas-wrap {
 	position: absolute;
-	inset: 0;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: var(--maid-bar-h);
+	/* 抽屉动画：默认显示，收起时向下滑入控制条（使用关键帧实现更自然弹性） */
+	transform-origin: bottom center;
+	transition: none;
+	will-change: transform, opacity;
+	border-radius: 10px;
 }
 
 /* 确保 Pixi Canvas 与容器像素对齐，避免缩放引入的模糊 */
 .maid-canvas-wrap canvas {
 	width: 100%;
 	height: 100%;
-	display: block;
 }
 
-.maid-status,
-.maid-error {
+/* 画布与控制条的动态渐变细边框（不拦截交互） */
+.maid-canvas-wrap::after,
+.maid-controlbar::after {
+	content: '';
 	position: absolute;
-	left: 12px;
-	top: 12px;
-	padding: 4px 8px;
-	font-size: 12px;
-	border-radius: 6px;
-	background: rgba(255,255,255,0.9);
-	border: 1px solid #d0d7de;
-	color: #24292f;
+	inset: 0;
+	border-radius: 10px;
+	pointer-events: none;
+	background: conic-gradient(from 0deg, rgba(64,194,164,.6), rgba(64,194,164,0) 40%, rgba(64,194,164,.6) 80%, rgba(64,194,164,0) 100%);
+	background-size: 200% 200%;
+	animation: maid-border-flow 4s linear infinite;
+	/* 仅显示为细边框 */
+	padding: 1px;
+	-webkit-mask: 
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	mask: 
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
 }
 
-.maid-error {
-	color: #b42318;
-	background: #fee4e2;
-	border-color: #fecdca;
-}
-
-.maid-hint { display: none; }
-
-/* 清晰度控制器 */
-.maid-controls {
+/* 底部一体化控制条：展开/收起 + 切换 + 设置 */
+.maid-controlbar {
 	position: absolute;
-	right: 12px;
-	top: 12px;
-	display: inline-flex;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: var(--maid-bar-h);
+	display: flex;
 	align-items: center;
-	gap: 6px;
-	padding: 4px 6px;
-	border: 1px solid #d0d7de;
-	background: rgba(255,255,255,0.9);
+	gap: 12px;
+	padding: 6px 10px;
+	background: linear-gradient(0deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75));
+	border-top: 1px solid rgba(229,231,235,0.6);
+	border-radius: 10px 10px 0 0;
 	color: #24292f;
-	border-radius: 8px;
 	z-index: 51;
-  flex-wrap: wrap;
+	/* 毛玻璃更精致（可按需移除以优化性能） */
+	-webkit-backdrop-filter: saturate(160%) blur(8px);
+	backdrop-filter: saturate(160%) blur(8px);
+}
+
+.maid-counter {
+	margin-left: auto;
+	font-size: 12px;
+	color: #57606a;
 }
 
 .maid-controls-label {
 	font-size: 12px;
 	color: #57606a;
 }
+
+.maid-field { display: inline-flex; align-items: center; gap: 6px; }
 
 .maid-select {
 	font-size: 12px;
@@ -124,7 +108,111 @@
 	border: 1px solid #d0d7de;
 	background: white;
 	color: #24292f;
+	outline: none;
 }
+
+/* 展开/收起按钮 */
+.maid-toggle {
+	height: 30px;
+	padding: 0 10px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 8px;
+	border: 1px solid #d0d7de;
+	background: #ffffff;
+	color: #24292f;
+	font-size: 12px;
+	line-height: 1;
+	transition: all .15s ease;
+}
+.maid-toggle:hover { background: #f6f8fa; transform: translateY(-1px); }
+.maid-toggle:active { transform: translateY(0); }
+
+/* 图标按钮：用于切换模型 */
+.maid-iconbtn {
+	height: 30px;
+	width: 38px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 8px;
+	border: 1px solid #d0d7de;
+	background: #ffffff;
+	color: #24292f;
+	transition: all .15s ease;
+}
+.maid-iconbtn:hover { background: #f6f8fa; transform: translateY(-1px); }
+.maid-iconbtn:active { transform: translateY(0); }
+.maid-iconbtn img { width: 18px; height: 18px; display: block; }
+
+/* 禁用态 */
+.maid-iconbtn:disabled,
+.maid-toggle:disabled {
+	opacity: .55;
+	cursor: not-allowed;
+	transform: none;
+}
+
+/* 设置按钮激活态 */
+.maid-iconbtn-active {
+	background: #ebf8f5;
+	border-color: #9fe3d2;
+}
+
+/* 表情选择面板（点击图标时显示） */
+.maid-emotion-panel {
+	position: absolute;
+	min-width: 220px;
+	padding: 8px;
+	background: #ffffff;
+	border: 1px solid #d0d7de;
+	border-radius: 8px;
+	box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+	z-index: 200; /* 高于控制条 */
+}
+.maid-emotion-panel-left { left: 0; top: 50%; bottom: auto; transform: translateX(calc(-100% - 8px)) translateY(-50%); }
+.maid-emotion-list { margin: 0; padding: 4px; list-style: none; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.maid-emotion-item { width: 100%; text-align: left; padding: 6px 8px; border: 1px solid #d0d7de; background: #fff; border-radius: 6px; font-size: 12px; color: #24292f; transition: all .12s ease; }
+.maid-emotion-item:hover { background: #f6f8fa; transform: translateY(-1px); }
+.maid-emotion-item:active { transform: translateY(0); }
+.maid-emotion-item.active { background: #ebf8f5; border-color: #9fe3d2; }
+/* 控件包裹元素不再需要 hover/pinned/suppress 行为，面板显示由渲染控制 */
+
+/* 动作选择面板（点击图标时显示） */
+.maid-motion-panel-right { display: none; }
+.maid-motion-groups { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.maid-tab { padding: 4px 8px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; font-size: 12px; color: #24292f; }
+.maid-tab:hover { background: #f6f8fa; }
+.maid-tab.active { background: #ebf8f5; border-color: #9fe3d2; }
+.maid-motion-list { margin: 0; padding: 4px; list-style: none; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.maid-motion-item { width: 100%; text-align: left; padding: 6px 8px; border: 1px solid #d0d7de; background: #fff; border-radius: 6px; font-size: 12px; color: #24292f; transition: all .12s ease; }
+.maid-motion-item:hover { background: #f6f8fa; transform: translateY(-1px); }
+.maid-motion-item:active { transform: translateY(0); }
+
+/* 面板内的分区标题 */
+.maid-section-title {
+	margin: 6px 4px 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #334155;
+}
+
+/* 状态/错误条（显示在控制条上方） */
+.maid-status,
+.maid-error {
+	position: absolute;
+	left: 12px;
+	bottom: calc(var(--maid-bar-h) + 8px);
+	padding: 4px 8px;
+	font-size: 12px;
+	border-radius: 6px;
+	background: rgba(255,255,255,0.9);
+	border: 1px solid #d0d7de;
+	color: #24292f;
+	z-index: 52;
+}
+.maid-error { color: #b42318; background: #fee4e2; border-color: #fecdca; }
 
 /* 大小滑块样式，与选择器风格一致 */
 .maid-range {
@@ -132,35 +220,118 @@
   accent-color: #40c2a4;
 }
 
-/* 收起态 */
-.maid-collapsed {
-	width: 64px;
-	height: 64px;
-	border-radius: 50%;
-	padding: 0;
-}
-
-.maid-collapsed .maid-header {
-	height: 64px;
-	border-bottom: none;
-	border-radius: 50%;
+/* 加载动画遮罩与旋转器（避让底部控制条） */
+.maid-loading-overlay {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: var(--maid-bar-h);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 	justify-content: center;
+	gap: 10px;
+	background: rgba(255,255,255,0.55);
+	-webkit-backdrop-filter: blur(4px) saturate(140%);
+	backdrop-filter: blur(4px) saturate(140%);
+	z-index: 60;
+	transform-origin: bottom center;
+	transition: none;
 }
 
-.maid-collapsed .maid-title,
-.maid-collapsed .maid-actions .maid-btn:nth-child(1),
-.maid-collapsed .maid-actions .maid-btn:nth-child(2) {
-	display: none;
+.maid-spinner {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	border: 3px solid rgba(64, 194, 164, 0.25);
+	border-top-color: #40c2a4;
+	animation: maid-spin 0.9s linear infinite;
 }
 
-.maid-collapsed .maid-actions .maid-btn:nth-child(3) {
-	width: 40px;
-	height: 40px;
-	font-size: 18px;
+@keyframes maid-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 
-.maid-collapsed .maid-body {
-	display: none;
+.maid-loading-text {
+	font-size: 12px;
+	color: #374151;
+}
+
+/* 收起状态：容器高度不变，控制条保持原位，仅滑动画布/面板 */
+/* 收起时：画布与加载遮罩滑入控制条内、禁用交互 */
+.maid-widget.maid-collapsed .maid-canvas-wrap,
+.maid-widget.maid-collapsed .maid-loading-overlay {
+	transform: translateY(100%);
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* 设置面板：与画布区域同尺寸，展开时覆盖在画布上；半透明背景，位于控制条下方 */
+.maid-settings-panel {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: var(--maid-bar-h);
+	display: flex;
+	flex-direction: column; /* 垂直排布控件 */
+	align-items: flex-start; /* 左对齐 */
+	gap: 16px;
+	padding: 10px 12px;
+	background: rgba(255, 255, 255, 0.5);
+	border: none;
+	color: #24292f;
+	z-index: 50; /* 盖住画布但不挡住控制条（控制条 z-index: 51） */
+	/* 不启用毛玻璃，保持半透明覆盖层即可 */
+	transform-origin: bottom center;
+	transition: none;
+}
+
+/* 设置面板内部字段占满一行，便于整齐竖排 */
+.maid-settings-panel .maid-field {
+	width: 100%;
+}
+
+/* 收起时：设置面板也一并收回 */
+.maid-widget.maid-collapsed .maid-settings-panel {
+	transform: translateY(100%);
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* 弹性抽屉动画：展开与收起（画布与设置层） */
+.maid-widget:not(.maid-collapsed) .maid-canvas-wrap,
+.maid-widget:not(.maid-collapsed) .maid-settings-panel,
+.maid-widget:not(.maid-collapsed) .maid-loading-overlay {
+	animation: maid-slide-up 360ms cubic-bezier(.22,1,.36,1);
+	transform: translateY(0);
+	opacity: 1;
+}
+
+.maid-widget.maid-collapsed .maid-canvas-wrap,
+.maid-widget.maid-collapsed .maid-settings-panel,
+.maid-widget.maid-collapsed .maid-loading-overlay {
+	animation: maid-slide-down 300ms cubic-bezier(.22,1,.36,1);
+}
+
+@keyframes maid-slide-up {
+	0% { transform: translateY(100%); opacity: 0; }
+	60% { transform: translateY(-3%); }
+	80% { transform: translateY(1.5%); }
+	100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes maid-slide-down {
+	0% { transform: translateY(0); opacity: 1; }
+	20% { transform: translateY(-1.5%); }
+	100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes maid-border-flow {
+	0% { background-position: 0% 0%; }
+	100% { background-position: 200% 200%; }
 }
 
 /* 响应式 */
