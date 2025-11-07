@@ -15,6 +15,7 @@ export default function Maid() {
 	const containerRef = useRef(null);
 	const appRef = useRef(null);
 	const modelRef = useRef(null);
+	const isAnimatingRef = useRef(false);
 	// 缓存已加载的模型：key 为路径，value 为 Live2DModel 实例
 	const preloadedRef = useRef(new Map());
 	const [collapsed, setCollapsed] = useState(false);
@@ -156,15 +157,14 @@ export default function Maid() {
 					{ name: '长发', file: 'changfa.exp3.json', displayName: '长发' },
 					{ name: '双马尾', file: 'shuangmawei.exp3.json', displayName: '双马尾' },
 					{ name: '垂耳', file: 'chuier.exp3.json', displayName: '垂耳' },
-					{ name: '镜子', file: 'jingzi.exp3.json', displayName: '镜子' },
-					{ name: '狐狸', file: 'huli.exp3.json', displayName: '狐狸' },
-					{ name: '笔记本1', file: 'bijiben.exp3.json', displayName: '笔记本1' },
-					{ name: '笔记本2', file: 'bijiben2.exp3.json', displayName: '笔记本2' },
+					{ name: '狐狸', file: 'huli.exp3.json', displayName: '狐狸' },				
 				],
 				actionList: [
 					{ name: '吐舌', file: 'tushe.exp3.json', displayName: '吐舌' },
 					{ name: '嘟嘴', file: 'duzui.exp3.json', displayName: '嘟嘴' },
 					{ name: '鼓嘴', file: 'guzui.exp3.json', displayName: '鼓嘴' },
+					{ name: '镜子', file: 'jingzi.exp3.json', displayName: '镜子' },
+					{ name: '笔记本', file: 'bijiben2.exp3.json', displayName: '笔记本2' },
 					{ name: '打游戏', file: 'dayouxi.exp3.json', displayName: '打游戏' },
 					{ name: '抱狐狸', file: 'baohuli.exp3.json', displayName: '抱狐狸' },
 					{ name: '扇子', file: 'shanzi.exp3.json', displayName: '扇子' },
@@ -325,7 +325,7 @@ export default function Maid() {
 		};
 	}, []);
 
-	// 根据容器与当前倍率，对模型进行自适应摆放（contain + 左上对齐）
+	// 根据容器与当前倍率，对模型进行自适应摆放（contain + 居中对齐）
 	const fitAndPlace = useCallback(() => {
 		const app = appRef.current;
 		const container = containerRef.current;
@@ -344,14 +344,12 @@ export default function Maid() {
 		const desired = baseScale * (Number(userScale) || 1);
 		const finalScale = Math.max(0.05, Math.min(baseScale, desired));
 		model.scale.set(finalScale, finalScale);
+		// 居中放置模型
 		if (model.anchor && typeof model.anchor.set === 'function') {
-			model.anchor.set(0, 0);
-			model.x = 4; // 左侧留 4px 边距
-			model.y = 0; // 顶部贴齐
-		} else {
-			model.x = 4;
-			model.y = 0;
+			model.anchor.set(0.5, 0.5);
 		}
+		model.x = viewW / 2;
+		model.y = viewH / 2;
 	}, [userScale]);
 
 	// 初始化 Pixi（仅运行一次）
@@ -451,7 +449,7 @@ export default function Maid() {
 			if (!model) {
 				model = await Live2DModel.from(cfgPath, { autoInteract: false });
 				model.interactive = true;
-				if (model.anchor && typeof model.anchor.set === 'function') model.anchor.set(0, 0);
+				if (model.anchor && typeof model.anchor.set === 'function') model.anchor.set(0.5, 0.5);
 				// 初次加载：开启自动更新
 				try { model.autoUpdate = true; } catch (err) { void err; }
 				preloadedRef.current.set(cfgPath, model);
@@ -648,15 +646,119 @@ export default function Maid() {
 	// 表情选择改为“选择即应用”，无需单独的应用函数
 
 	// 展开/收起：收起时自动关闭设置面板
-	const toggleCollapsed = () => {
-		setCollapsed((prev) => {
-			const next = !prev;
-			if (next) {
-				setSettingsOpen(false);
-				setOpenPanel('');
-			}
-			return next;
+	// 为控制条按钮标注序号用于阶梯动画
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+		const bar = el.querySelector('.maid-controlbar');
+		if (!bar) return;
+		const btns = Array.from(bar.querySelectorAll('button.maid-btn'));
+		btns.forEach((b, i) => {
+			try { b.style.setProperty('--i', String(i)); } catch { /* ignore */ }
 		});
+		try { bar.style.setProperty('--btnCount', String(btns.length)); } catch { /* ignore */ }
+	}, []);
+
+	// 解析 CSS 时间变量（支持 ms / s），统一返回毫秒
+	const readCssTimeMs = (el, varName, fallbackMs = 0) => {
+		try {
+			if (!el) return fallbackMs;
+			const cs = getComputedStyle(el);
+			let v = cs.getPropertyValue(varName).trim();
+			if (!v) return fallbackMs;
+			if (v.endsWith('ms')) return parseFloat(v) || fallbackMs;
+			if (v.endsWith('s')) return (parseFloat(v) || 0) * 1000;
+			const n = parseFloat(v);
+			return Number.isFinite(n) ? n : fallbackMs;
+		} catch { return fallbackMs; }
+	};
+
+	const runCollapseSequence = () => {
+		const root = containerRef.current; if (!root || isAnimatingRef.current) return;
+		setSettingsOpen(false); setOpenPanel('');
+		isAnimatingRef.current = true;
+		root.classList.add('maid-anim-collapsing-stage');
+		root.classList.add('maid-anim-collapsing-controls');
+		const bar = root.querySelector('.maid-controlbar');
+		const btns = bar ? bar.querySelectorAll('button.maid-btn:not(.maid-toggle)') : [];
+		const stageEl = root.querySelector('.maid-canvas-wrap');
+
+		const waitAnim = (el, name) => new Promise((resolve) => {
+			if (!el) return resolve();
+			const handler = (e) => {
+				if (e.animationName === name) {
+					el.removeEventListener('animationend', handler);
+					resolve();
+				}
+			};
+			el.addEventListener('animationend', handler);
+		});
+
+		const waits = [waitAnim(stageEl, 'maid-stage-collapse')];
+		if (btns && btns.length) waits.push(Promise.all(Array.from(btns).map(b => waitAnim(b, 'maid-btn-collapse'))));
+
+		// 兜底：基于 CSS 变量计算最大耗时，防止 animationend 丢失导致无法再触发收起
+		const btnCount = btns ? btns.length : 0;
+		const stageMs = readCssTimeMs(root, '--maid-stage-collapse', 300);
+		const btnMs = readCssTimeMs(root, '--maid-btn-collapse-duration', 220);
+		const staggerMs = readCssTimeMs(root, '--maid-btn-stagger', 60);
+		const fallbackTotal = Math.max(stageMs, btnMs + staggerMs * Math.max(0, btnCount - 1)) + 80;
+		let done = false;
+		const cleanup = () => {
+			root.classList.remove('maid-anim-collapsing-stage');
+			root.classList.remove('maid-anim-collapsing-controls');
+			root.classList.add('maid-collapsed');
+			setCollapsed(true);
+			isAnimatingRef.current = false;
+		};
+		const timer = setTimeout(() => { if (done) return; done = true; cleanup(); }, fallbackTotal);
+		Promise.all(waits).then(() => { if (done) return; done = true; clearTimeout(timer); cleanup(); });
+	};
+
+	const runExpandSequence = () => {
+		const root = containerRef.current; if (!root || isAnimatingRef.current) return;
+		isAnimatingRef.current = true;
+		root.classList.remove('maid-collapsed');
+		setCollapsed(false);
+		try { void root.offsetWidth; } catch { /* ignore */ }
+		root.classList.add('maid-anim-expanding-stage');
+		root.classList.add('maid-anim-expanding-controls');
+		const bar = root.querySelector('.maid-controlbar');
+		const btns = bar ? bar.querySelectorAll('button.maid-btn:not(.maid-toggle)') : [];
+		const stageEl = root.querySelector('.maid-canvas-wrap');
+
+		const waitAnim = (el, name) => new Promise((resolve) => {
+			if (!el) return resolve();
+			const handler = (e) => {
+				if (e.animationName === name) {
+					el.removeEventListener('animationend', handler);
+					resolve();
+				}
+			};
+			el.addEventListener('animationend', handler);
+		});
+
+		const waits = [waitAnim(stageEl, 'maid-stage-expand')];
+		if (btns && btns.length) waits.push(Promise.all(Array.from(btns).map(b => waitAnim(b, 'maid-btn-expand'))));
+
+		// 兜底：基于 CSS 变量计算最大耗时，防止动画事件丢失导致无法再次展开/收起
+		const btnCount = btns ? btns.length : 0;
+		const stageMs = readCssTimeMs(root, '--maid-stage-expand', 300);
+		const btnMs = readCssTimeMs(root, '--maid-btn-expand-duration', 240);
+		const staggerMs = readCssTimeMs(root, '--maid-btn-stagger', 60);
+		const fallbackTotal = Math.max(stageMs, btnMs + staggerMs * Math.max(0, btnCount - 1)) + 80;
+		let done = false;
+		const cleanup = () => {
+			root.classList.remove('maid-anim-expanding-stage');
+			root.classList.remove('maid-anim-expanding-controls');
+			isAnimatingRef.current = false;
+		};
+		const timer = setTimeout(() => { if (done) return; done = true; cleanup(); }, fallbackTotal);
+		Promise.all(waits).then(() => { if (done) return; done = true; clearTimeout(timer); cleanup(); });
+	};
+
+	const toggleCollapsed = () => {
+		if (collapsed) runExpandSequence(); else runCollapseSequence();
 	};
 
 	// 打开/关闭设置面板：若处于收起状态则先展开
@@ -672,7 +774,7 @@ export default function Maid() {
 	  >
 	    <div className="maid-canvas-wrap" />
 
-			{/* 设置面板：点击设置图标后出现，承载清晰度与大小控件 */}
+			{/* 设置面板：点击设置图标后出现，承载清晰度、大小、模型切换控件 */}
 			{settingsOpen && !collapsed && (
 				<div id="maid-settings-panel" className="maid-settings-panel" role="dialog" aria-label="看板娘设置">
 					<div className="maid-field">
@@ -703,6 +805,28 @@ export default function Maid() {
 							title="按最大适配大小(1x)的比例进行缩放，最小为1/2"
 						/>
 					</div>
+
+					{/* 模型切换移动到设置面板 */}
+					<div className="maid-field">
+						<label className="maid-controls-label" htmlFor="maidModel">模型</label>
+						<select
+							id="maidModel"
+							className="maid-select"
+							title="切换模型"
+							value={currentModelKey}
+							onChange={(e) => {
+								const key = e.target.value;
+								setOpenPanel('');
+								try { setCurrentModelKey(key); } catch { /* ignore */ }
+								const cfg = modelConfigs[key];
+								if (cfg && cfg.modelPath) { void loadAndShowModel(cfg.modelPath); }
+							}}
+						>
+							{Object.entries(modelConfigs).map(([key, cfg]) => (
+								<option key={key} value={key}>{cfg.label || key}</option>
+							))}
+						</select>
+					</div>
 				</div>
 			)}
 
@@ -712,7 +836,7 @@ export default function Maid() {
 					const { emotionList, clothesList, actionList, sceneList } = getCategorizedExpressions();
 					const mkBtn = (type, icon, title, disabled) => (
 						<button
-							className={`maid-iconbtn${openPanel === type ? ' maid-iconbtn-active' : ''}`}
+							className={`maid-iconbtn maid-btn${openPanel === type ? ' maid-iconbtn-active' : ''}`}
 							title={title}
 							aria-label={title}
 							aria-expanded={openPanel === type}
@@ -731,34 +855,9 @@ export default function Maid() {
 						</>
 					);
 				})()}
-				{/* 已移除独立“动作”控件，动作列表合并在表情面板中 */}
-				<select
-					className="maid-select"
-					title="切换模型"
-					value={currentModelKey}
-					onChange={(e) => {
-						const key = e.target.value;
-						setOpenPanel('');
-						try { setCurrentModelKey(key); } catch { /* ignore */ }
-						const cfg = modelConfigs[key];
-						if (cfg && cfg.modelPath) { void loadAndShowModel(cfg.modelPath); }
-					}}
-					style={{ marginLeft: 6 }}
-				>
-					{Object.entries(modelConfigs).map(([key, cfg]) => (
-						<option key={key} value={key}>{cfg.label || key}</option>
-					))}
-				</select>
+				{/* 已移除独立“动作”控件与模型选择器；模型选择已移动到设置面板 */}
 				<button
-					className="maid-toggle"
-					aria-pressed={collapsed}
-					onClick={toggleCollapsed}
-					title={collapsed ? '展开' : '收起'}
-				>
-					{collapsed ? '展开' : '收起'}
-				</button>
-				<button
-					className={`maid-iconbtn${settingsOpen ? ' maid-iconbtn-active' : ''}`}
+					className={`maid-iconbtn maid-btn${settingsOpen ? ' maid-iconbtn-active' : ''}`}
 					onClick={toggleSettings}
 					title="设置"
 					aria-label="设置"
@@ -766,6 +865,14 @@ export default function Maid() {
 					aria-controls="maid-settings-panel"
 				>
 					<img src="/icons/maid/config.svg" alt="设置" />
+				</button>
+				<button
+					className="maid-toggle maid-btn"
+					aria-pressed={collapsed}
+					onClick={toggleCollapsed}
+					title={collapsed ? '展开' : '收起'}
+				>
+					{collapsed ? '展开' : '收起'}
 				</button>
 
 				{/* 单模型模式：无模型序号 */}

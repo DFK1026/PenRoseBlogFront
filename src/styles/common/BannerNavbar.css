@@ -1,0 +1,90 @@
+.bili-banner {
+  position: absolute;
+  inset: 0; /* 填满导航栏 */
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* 总体裁剪 */
+  pointer-events: none; /* 不影响导航点击 */
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 0; /* 置于 nav-inner 背后 */
+}
+.home-navbar, .banner-navbar { position: fixed; }
+.home-navbar .nav-inner, .banner-navbar .nav-inner { position: relative; z-index: 2; }
+.home-navbar, .banner-navbar {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 15vh;
+  z-index: 100;
+  transform: translateY(0);
+  transition: transform .2s ease;
+  background-color: transparent;
+}
+.home-navbar .nav-inner, .banner-navbar .nav-inner {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 12.5vw 1fr;
+  align-items: center;
+  padding: 0 2vw;
+}
+.home-navbar.is-hidden, .banner-navbar.is-hidden { transform: translateY(-110%); }
+.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 800; color: #1f6b5b; letter-spacing: .2px; }
+.nav-brand { grid-column: 1 / 2; height: 100%; }
+.nav-brand > * { max-height: 80%; width: auto; display: block; }
+.bili-banner .bili-layer {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  display: block; /* 避免 flex 拉伸导致变形 */
+  overflow: hidden; /* 每层也裁剪，防止平移露边 */
+}
+.bili-banner .bili-media {
+  position: absolute;
+  top: 0;
+  left: 50%; /* 默认水平居中 */
+  transform: translateX(-50%);
+  height: 100%;
+  width: auto; /* 高度贴合容器，保持比例 */
+  max-width: 100%; /* 不超过容器宽，避免溢出 */
+  object-fit: contain; /* 若宽度不足则留边，不拉伸 */
+  object-position: center center;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 层次淡入（可选） */
+/* 移除通用过渡，保持零风格干预，由主题 data.json 决定效果 */
+/* .bili-banner .bili-layer { transition: transform .08s linear; } */
+
+/* 背景底层：铺满并裁剪（cover），保证横向铺满 */
+.bili-banner .bili-layer:first-child .bili-media {
+  left: 0;
+  transform: none;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: 50% 50%;
+}
+
+/* BannerNavbar 特有的前景层：放导航内容，不被背景阻挡 */
+.banner-navbar .nav-inner { position: relative; z-index: 2; }
+
+/* 背景加载与错误提示（可按需美化） */
+.bili-banner-loading, .bili-banner-error {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  color: #256769;
+  background: rgba(255,255,255,.6);
+  padding: 4px 10px;
+  border-radius: 4px;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}

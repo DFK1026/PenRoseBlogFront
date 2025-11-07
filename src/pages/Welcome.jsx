@@ -30,7 +30,6 @@ export default function Welcome() {
     username: '',
     password: '',
     confirmPassword: '',
-    nickname: '',
     gender: '',
   });
 
@@ -108,12 +107,6 @@ export default function Welcome() {
       setMessageType('error');
       return;
     }
-    // 昵称长度校验（最长25）
-    if (registerData.nickname.length > 25) {
-      setMessage('昵称不能超过25个字符');
-      setMessageType('error');
-      return;
-    }
     // 性别校验（可选）
     if (registerData.gender && !['男', '女', '保密'].includes(registerData.gender)) {
       setMessage('性别只能为男、女或保密');
@@ -130,7 +123,6 @@ export default function Welcome() {
       const res = await axios.post('/api/user/register', {
         username: registerData.username,
         password: registerData.password,
-        nickname: registerData.nickname,
         gender: registerData.gender
       });
   setMessage(res.data.msg);
@@ -159,7 +151,6 @@ export default function Welcome() {
                   <input type="text" placeholder="Username" value={registerData.username} onChange={e => setRegisterData({ ...registerData, username: e.target.value })} />
                   <input type="password" placeholder="Password" value={registerData.password} onChange={e => setRegisterData({ ...registerData, password: e.target.value })} />
                   <input type="password" placeholder="Confirm Password" value={registerData.confirmPassword} onChange={e => setRegisterData({ ...registerData, confirmPassword: e.target.value })} />
-                  <input type="text" placeholder="Nickname (最长25字)" value={registerData.nickname} onChange={e => setRegisterData({ ...registerData, nickname: e.target.value })} />
                 </div>
                 {/* 性别选择（图片选项卡样式） */}
                 <div className="form-gender">

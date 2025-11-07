@@ -1,11 +1,17 @@
 /*看板娘面板*/
 .maid-widget {
-	--maid-bar-h: 40px;
+	--maid-bar-h: 3vh;
+	/* 动画可配置变量 */
+	--maid-stage-collapse: 300ms;
+	--maid-stage-expand: 300ms;
+	--maid-btn-collapse-duration: 260ms; /* 单个按钮收起动画时长 */
+	--maid-btn-expand-duration: 4200ms;  /* 单个按钮展开动画时长（更慢更自然） */
+	--maid-btn-stagger: 100ms;          /* 阶梯延迟 */
   position: fixed;
-	right: 20px;
-	bottom: 20px;
-  width: 25vw;
-  height: 50vh;
+	right: 0vw;
+	bottom: 1vh;
+	width: 20vw; 
+	height: 45vh; 
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -14,8 +20,6 @@
   color: inherit;
   -webkit-user-select: none;
   user-select: none;
-	/* 允许左侧外溢以显示表情面板 */
-	overflow: visible;
   z-index: 999;
   cursor: grab;
 }
@@ -31,10 +35,10 @@
 	right: 0;
 	top: 0;
 	bottom: var(--maid-bar-h);
-	/* 抽屉动画：默认显示，收起时向下滑入控制条（使用关键帧实现更自然弹性） */
-	transform-origin: bottom center;
+	/* 取消抽屉动画与过渡，保持静止布局 */
+	transform: none;
 	transition: none;
-	will-change: transform, opacity;
+	will-change: auto;
 	border-radius: 10px;
 }
 
@@ -44,28 +48,6 @@
 	height: 100%;
 }
 
-/* 画布与控制条的动态渐变细边框（不拦截交互） */
-.maid-canvas-wrap::after,
-.maid-controlbar::after {
-	content: '';
-	position: absolute;
-	inset: 0;
-	border-radius: 10px;
-	pointer-events: none;
-	background: conic-gradient(from 0deg, rgba(64,194,164,.6), rgba(64,194,164,0) 40%, rgba(64,194,164,.6) 80%, rgba(64,194,164,0) 100%);
-	background-size: 200% 200%;
-	animation: maid-border-flow 4s linear infinite;
-	/* 仅显示为细边框 */
-	padding: 1px;
-	-webkit-mask: 
-		linear-gradient(#000 0 0) content-box,
-		linear-gradient(#000 0 0);
-	mask: 
-		linear-gradient(#000 0 0) content-box,
-		linear-gradient(#000 0 0);
-	-webkit-mask-composite: xor;
-	mask-composite: exclude;
-}
 
 /* 底部一体化控制条：展开/收起 + 切换 + 设置 */
 .maid-controlbar {
@@ -76,19 +58,20 @@
 	height: var(--maid-bar-h);
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	justify-content: flex-start;
+	gap: 10px;
 	padding: 6px 10px;
-	background: linear-gradient(0deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75));
-	border-top: 1px solid rgba(229,231,235,0.6);
-	border-radius: 10px 10px 0 0;
-	color: #24292f;
+	/* 只保留按钮，不需要条形底色与毛玻璃 */
+	background: transparent;
+	border-top: none;
+	border-radius: 0;
 	z-index: 51;
 	/* 毛玻璃更精致（可按需移除以优化性能） */
-	-webkit-backdrop-filter: saturate(160%) blur(8px);
-	backdrop-filter: saturate(160%) blur(8px);
+	/* 关闭毛玻璃与阴影 */
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	box-shadow: none;
 }
-
-/* 已移除多模型切换计数器样式 */
 
 .maid-controls-label {
 	font-size: 12px;
@@ -110,7 +93,7 @@
 /* 展开/收起按钮 */
 .maid-toggle {
 	height: 30px;
-	padding: 0 10px;
+	padding: 10px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -121,6 +104,7 @@
 	font-size: 12px;
 	line-height: 1;
 	transition: all .15s ease;
+	margin-left: auto !important;
 }
 .maid-toggle:hover { background: #f6f8fa; transform: translateY(-1px); }
 .maid-toggle:active { transform: translateY(0); }
@@ -161,23 +145,22 @@
 	position: absolute;
 	min-width: 220px;
 	padding: 8px;
-	background: #ffffff;
-	border: 1px solid #d0d7de;
+	background: rgba(255,255,255,0.55);
+	-webkit-backdrop-filter: blur(8px) saturate(140%);
+	backdrop-filter: blur(8px) saturate(140%);
+	border: 1px solid rgba(208,215,222,0.6);
 	border-radius: 8px;
 	box-shadow: 0 6px 20px rgba(0,0,0,0.12);
 	z-index: 200; /* 高于控制条 */
 }
 .maid-emotion-panel-left { left: 0; top: 50%; bottom: auto; transform: translateX(calc(-100% - 8px)) translateY(-50%); }
-.maid-emotion-list { margin: 0; padding: 4px; list-style: none; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.maid-emotion-list { margin: 0; padding: 4px; list-style: none; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; -ms-overflow-style: none; }
+.maid-emotion-list::-webkit-scrollbar { width: 0; height: 0; }
 .maid-emotion-item { width: 100%; text-align: left; padding: 6px 8px; border: 1px solid #d0d7de; background: #fff; border-radius: 6px; font-size: 12px; color: #24292f; transition: all .12s ease; }
 .maid-emotion-item:hover { background: #f6f8fa; transform: translateY(-1px); }
 .maid-emotion-item:active { transform: translateY(0); }
 .maid-emotion-item.active { background: #ebf8f5; border-color: #9fe3d2; }
-/* 控件包裹元素不再需要 hover/pinned/suppress 行为，面板显示由渲染控制 */
 
-/* 已移除旧动作用样式块（采用表情面板复用样式） */
-
-/* 面板内的分区标题 */
 .maid-section-title {
 	margin: 6px 4px 4px;
 	font-size: 12px;
@@ -246,16 +229,6 @@
 	color: #374151;
 }
 
-/* 收起状态：容器高度不变，控制条保持原位，仅滑动画布/面板 */
-/* 收起时：画布与加载遮罩滑入控制条内、禁用交互 */
-.maid-widget.maid-collapsed .maid-canvas-wrap,
-.maid-widget.maid-collapsed .maid-loading-overlay {
-	transform: translateY(100%);
-	opacity: 0;
-	pointer-events: none;
-}
-
-/* 设置面板：与画布区域同尺寸，展开时覆盖在画布上；半透明背景，位于控制条下方 */
 .maid-settings-panel {
 	position: absolute;
 	left: 0;
@@ -272,53 +245,13 @@
 	color: #24292f;
 	z-index: 50; /* 盖住画布但不挡住控制条（控制条 z-index: 51） */
 	/* 不启用毛玻璃，保持半透明覆盖层即可 */
-	transform-origin: bottom center;
+	transform: none;
 	transition: none;
 }
 
 /* 设置面板内部字段占满一行，便于整齐竖排 */
 .maid-settings-panel .maid-field {
 	width: 100%;
-}
-
-/* 收起时：设置面板也一并收回 */
-.maid-widget.maid-collapsed .maid-settings-panel {
-	transform: translateY(100%);
-	opacity: 0;
-	pointer-events: none;
-}
-
-/* 弹性抽屉动画：展开与收起（画布与设置层） */
-.maid-widget:not(.maid-collapsed) .maid-canvas-wrap,
-.maid-widget:not(.maid-collapsed) .maid-settings-panel,
-.maid-widget:not(.maid-collapsed) .maid-loading-overlay {
-	animation: maid-slide-up 360ms cubic-bezier(.22,1,.36,1);
-	transform: translateY(0);
-	opacity: 1;
-}
-
-.maid-widget.maid-collapsed .maid-canvas-wrap,
-.maid-widget.maid-collapsed .maid-settings-panel,
-.maid-widget.maid-collapsed .maid-loading-overlay {
-	animation: maid-slide-down 300ms cubic-bezier(.22,1,.36,1);
-}
-
-@keyframes maid-slide-up {
-	0% { transform: translateY(100%); opacity: 0; }
-	60% { transform: translateY(-3%); }
-	80% { transform: translateY(1.5%); }
-	100% { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes maid-slide-down {
-	0% { transform: translateY(0); opacity: 1; }
-	20% { transform: translateY(-1.5%); }
-	100% { transform: translateY(100%); opacity: 0; }
-}
-
-@keyframes maid-border-flow {
-	0% { background-position: 0% 0%; }
-	100% { background-position: 200% 200%; }
 }
 
 /* 响应式 */
@@ -338,4 +271,72 @@
 		right: 10px;
 		bottom: 10px;
 	}
+}
+
+/* ============= 分阶段动画 ============= */
+/* 画布阶段收起：自上到下裁切高度 */
+.maid-widget.maid-anim-collapsing-stage .maid-canvas-wrap {
+	animation: maid-stage-collapse var(--maid-stage-collapse) ease forwards;
+}
+@keyframes maid-stage-collapse {
+	0% { clip-path: inset(0 0 0 0); opacity: 1; }
+	100% { clip-path: inset(0 0 100% 0); opacity: 0; }
+}
+/* 控制按钮收起：左到右按序淡出缩放 */
+.maid-widget.maid-anim-collapsing-controls .maid-controlbar .maid-btn:not(.maid-toggle) {
+	animation: maid-btn-collapse var(--maid-btn-collapse-duration) ease forwards;
+	animation-delay: calc(var(--i) * var(--maid-btn-stagger));
+}
+@keyframes maid-btn-collapse {
+	0% { transform: scale(1); opacity: 1; }
+	100% { transform: scale(.6); opacity: 0; }
+}
+/* 展开：按钮按收起的反方向（右到左）出现，
+   使用总数与索引计算逆序延迟： (btnCount - 1 - i) * 60ms */
+.maid-widget.maid-anim-expanding-controls .maid-controlbar .maid-btn:not(.maid-toggle) {
+	animation: maid-btn-expand var(--maid-btn-expand-duration) cubic-bezier(.22,.8,.3,1) forwards;
+	/* 右到左（与收起左到右对称） */
+	animation-delay: calc((var(--btnCount) - 1 - var(--i)) * var(--maid-btn-stagger));
+}
+@keyframes maid-btn-expand {
+	0% { transform: scale(.6); opacity: 0; }
+	100% { transform: scale(1); opacity: 1; }
+}
+/* 展开第二阶段：画布自下向上出现 */
+.maid-widget.maid-anim-expanding-stage .maid-canvas-wrap {
+	animation: maid-stage-expand var(--maid-stage-expand) ease forwards;
+}
+@keyframes maid-stage-expand {
+	0% { clip-path: inset(100% 0 0 0); opacity: 0; }
+	100% { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+
+/* 执行展开动画时，确保可见性覆盖 collapsed 的 hidden 设置 */
+.maid-widget.maid-anim-expanding-stage .maid-canvas-wrap,
+.maid-widget.maid-anim-expanding-stage .maid-loading-overlay {
+	visibility: visible;
+}
+
+/* 收起后隐藏非 toggle 按钮：不用 display:none，保留元素以便展开时执行动画 */
+.maid-widget.maid-collapsed .maid-controlbar .maid-btn:not(.maid-toggle) {
+	opacity: 0;
+	transform: scale(.6);
+	pointer-events: none;
+}
+
+/* 收起状态下：通过将 toggle 绝对定位在最右侧，避免居中问题 */
+.maid-widget.maid-collapsed .maid-controlbar { justify-content: flex-start; }
+
+/* toggle 按钮样式不变，仍可用于展开 */
+.maid-widget.maid-collapsed {
+	z-index: 10; /* 收起时降低层级，避免遮挡其它内容 */
+}
+/* 收起状态下彻底隐藏画布与加载遮罩，防止动画类移除后重新显示 */
+.maid-widget.maid-collapsed .maid-canvas-wrap,
+.maid-widget.maid-collapsed .maid-loading-overlay {
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	clip-path: inset(0 0 100% 0);
+	transition: none;
 }

@@ -11,7 +11,7 @@
   position: absolute;
   inset: 0;
   /* 放大到 0.25 并右移，确保图形完整显示且不贴边 */
-  transform: translateX(44px) scale(0.25);
+  transform: translateX(44px) scale(0.23);
   transform-origin: top left;
 }
 
