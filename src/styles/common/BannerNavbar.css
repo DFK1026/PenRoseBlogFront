@@ -35,7 +35,7 @@
   padding: 0; /* 不留边距 */
 }
 .banner-navbar.is-hidden { transform: translateY(-110%); }
-.nav-brand { display: flex; align-items: center; gap: 8px; font-weight: 800; color: #1f6b5b; letter-spacing: .2px; }
+.nav-brand { display: flex; align-items: center; justify-content: center; gap: 0; font-weight: 800; color: #1f6b5b; letter-spacing: .2px; }
 .nav-brand { grid-column: 1 / 2; height: 100%; }
 .nav-brand > * { max-height: 80%; width: auto; display: block; }
 .bili-banner .bili-layer { position: absolute; left:0; top:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
@@ -45,19 +45,16 @@
 .banner-navbar .nav-brand .penrose-logo {
   display: inline-block;
   position: relative;
-  line-height: 0;
   overflow: visible;
-  height: 60%; /* 依据 18vh 导航高度自适应，约 10.8vh */
+  height: 100%; /* 依据 18vh 导航高度自适应，约 10.8vh */
   aspect-ratio: 1 / 1;
   will-change: transform; /* 避免鼠标交互时抖动 */
-  transform: translateZ(0);
+  z-index: 1000; /* 浮在导航栏之上 */
 }
 .banner-navbar .nav-brand .penrose-scale {
-  position: absolute;
-  inset: 0;
-  /* 去除过大的右移，直接按比例缩放到容器内 */
-  transform: translateX(5vw) scale(0.25);
-  transform-origin: top left;
+  position: relative;
+  transform: scale(0.3); /* 仅缩放，不做位移 */
+  transform-origin: center center;
 }
 .banner-navbar .penrose-shell { position: relative; top: 0; left: 0; }
 .banner-navbar .penrose-a,
@@ -112,29 +109,9 @@
 .banner-navbar .penrose-e { background-color: #666; top: 400px; left: 173px; transform: rotate(120deg) skew(30deg); }
 .banner-navbar .penrose-f { background-color: #aaa; top: 35px; left: 100px; transform: rotate(180deg) skew(30deg); }
 
-/* 层次淡入（可选） */
-/* 移除通用过渡，保持零风格干预，由主题 data.json 决定效果 */
-/* .bili-banner .bili-layer { transition: transform .08s linear; } */
-
-/* 删除首层 CSS 覆盖策略，改由 JS 计算宽高进行 overscan，保持与参考项目一致的“按像素尺寸居中” */
-
 /* BannerNavbar 特有的前景层：放导航内容，不被背景阻挡 */
 .banner-navbar .nav-inner { position: relative; z-index: 2; }
 
-/* 背景加载与错误提示（可按需美化） */
-.bili-banner-loading, .bili-banner-error {
-  position: absolute;
-  left: 50%; top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 12px;
-  color: #256769;
-  background: rgba(255,255,255,.6);
-  padding: 4px 10px;
-  border-radius: 4px;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  pointer-events: none;
-}
 
 /* -------- Example banners (spring/autumn/winter) scoped styles -------- */
 .example-banner { position:absolute; inset:0; overflow:hidden; pointer-events:auto; }
@@ -174,3 +151,10 @@
 .example-winter .view, .example-winter .tree, .example-winter .morning, .example-winter .afternoon { transition:.2s all ease-in; }
 .example-winter.moving .view, .example-winter.moving .tree, .example-winter.moving .morning, .example-winter.moving .afternoon { transition:none; }
 .example-winter .window-cover { opacity: calc((var(--percentage) - 0.9) / 0.1); }
+
+
+/* Ensure spring layers fill navbar height to avoid top gap */
+.example-spring .view > img { height: 100% !important; width: auto !important; }
+
+/* Sakura canvas overlay for spring */
+.example-spring .spring-sakura-canvas { position:absolute; inset:0; pointer-events:none; }

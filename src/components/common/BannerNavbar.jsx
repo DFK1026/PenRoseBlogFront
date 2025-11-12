@@ -174,19 +174,37 @@ export default function BannerNavbar({ bannerId, children }) {
   if (isExample) return; // 示例主题自身管理交互
     let raf = null;
     let initX = null;
+    let wasInside = false;
     const duration = animStateRef.current.duration;
     const lerp = (a, b, t) => a + (b - a) * t;
-    const onEnter = (e) => {
-      initX = e.pageX;
+    const within = (e) => {
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX, y = e.clientY;
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
     };
     const onMove = (e) => {
+      const inside = within(e);
+      if (!inside) {
+        initX = null;
+        if (!animStateRef.current.homing) {
+          animStateRef.current.homing = true;
+          animStateRef.current.startTime = 0;
+          if (!raf) raf = requestAnimationFrame(homing);
+        }
+        wasInside = false;
+        return;
+      }
+      if (!wasInside) {
+        initX = e.pageX;
+        wasInside = true;
+      }
       if (initX == null) initX = e.pageX;
-      // 与参考项目一致：不引入额外强度系数
       moveXRef.current = (e.pageX - initX);
       animStateRef.current.homing = false;
       if (!raf) raf = requestAnimationFrame(animate);
     };
     const onLeave = () => {
+      wasInside = false;
       animStateRef.current.homing = true;
       animStateRef.current.startTime = 0;
       if (!raf) raf = requestAnimationFrame(homing);
@@ -260,14 +278,12 @@ export default function BannerNavbar({ bannerId, children }) {
       if (progress < 1) raf = requestAnimationFrame(homing); else raf = null;
     }
     // 事件绑定在 window，避免背景忽略指针
-    window.addEventListener('mouseenter', onEnter);
-    window.addEventListener('mousemove', onMove, { passive: true });
+  window.addEventListener('mousemove', onMove, { passive: true });
     window.addEventListener('mouseleave', onLeave);
     window.addEventListener('blur', onLeave);
     // 初始应用一次基础矩阵
     if (!raf) raf = requestAnimationFrame(animate);
     return () => {
-      window.removeEventListener('mouseenter', onEnter);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseleave', onLeave);
       window.removeEventListener('blur', onLeave);
