@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 /**
  * 导航栏右上角头像/入口组件 NavAvatar
@@ -17,6 +17,7 @@ export default function NavAvatar({
   onClick, 
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // 可选尺寸变量
   const style = size ? { ['--size']: typeof size === 'number' ? `${size}px` : size } : undefined;
@@ -56,7 +57,12 @@ export default function NavAvatar({
       onClick();
       return;
     }
-    // 默认进入个人空间
+    // 在个人空间中：点击头像相当于刷新当前页面
+    if (location.pathname.startsWith('/selfspace')) {
+      window.location.reload();
+      return;
+    }
+    // 其余页面：默认进入个人空间
     navigate('/selfspace');
   };
 
