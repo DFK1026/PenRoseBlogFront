@@ -69,7 +69,7 @@ const data = [];
       await download(layerFirstChild);
     }
 
-    // 模拟鼠标偏移，测量视差 a
+  
     const element = await page.$('.animated-banner');
     const box = await element.boundingBox();
     await page.mouse.move(box.x + 0, box.y + 50);
@@ -101,7 +101,7 @@ const data = [];
     }, item.src);
     const fileData = Buffer.from(content.buffer);
     fs.writeFileSync(filePath, fileData);
-  // data.json 中写相对路径（前端会映射为 /banner/assets/...）
+  
     data.push({ ...item, src: `./assets/${id}/${fileName}` });
   }
 
@@ -111,7 +111,7 @@ const data = [];
 
   await sleep(300);
 
-  // 维护 manifest.json
+  
   const manifestPath = path.join(bannerRoot, 'manifest.json');
   let manifest = [];
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { manifest = []; }

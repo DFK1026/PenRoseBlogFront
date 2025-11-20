@@ -1,7 +1,3 @@
-/*
- * 扫描 public/banner/assets/* 生成 public/banner/manifest.json
- * 运行：npm run banner:manifest
- */
 const fs = require('fs');
 const path = require('path');
 
@@ -11,7 +7,7 @@ const manifestPath = path.join(bannerRoot, 'manifest.json');
 
 function isDir(p) { try { return fs.statSync(p).isDirectory(); } catch { return false; } }
 function guessCreatedAtFromId(id) {
-  // 期望 YYYY-MM-DD，解析为日期；不符合则用目录 mtime
+ 
   const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(id);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   return null;
@@ -39,7 +35,6 @@ function main() {
     }
     return { id, name: id, createdAt };
   });
-  // 按 createdAt 降序（若为相同格式可正确比较；否则保持原序）
   items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
   fs.mkdirSync(bannerRoot, { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(items, null, 2));

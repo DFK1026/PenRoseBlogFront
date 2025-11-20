@@ -1,58 +1,11 @@
-/* Home 页专属基础样式（从 index.css 迁移而来） */
-html, body, #root {
-	height: 100%;
-}
-
+html, body, #root { height: 100%; }
 * { box-sizing: border-box; }
-
-body {
-	margin: 0;
-	font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-	/* Home 背景渐变色 */
-	background: linear-gradient(180deg, #f9fffe 0%, #f1fbf7 35%, #ffffff 100%);
-	/* 禁止横向滚动，杜绝任何元素偶发外溢引起的左右移动 */
-	overflow-x: hidden;
-}
-
+body { margin: 0; overflow-x: hidden; }
 a { color: inherit; text-decoration: none; }
 
-
-/* 欢迎区域：占满视窗 */
-.home-hero-full {
-	min-height: 100vh;
-	width: 100%; /* 用 100% 避免 100vw 在出现垂直滚动条时触发微小横向溢出 */
-	display: grid;
-	place-items: center;
-	padding: 5vh 10vw 5vh;
-	/* 浅色测试背景（后续可替换） */
-	background: linear-gradient(180deg, #f7d27b 0%, #f8b568 50%, #e96efc 100%);
-}
-.hero-center { text-align: center; }
-.welcome-title { font-size: 34px; margin: 0 0 10px; color: #1f6b5b; }
-.welcome-subtitle { font-size: 16px; color: #537b77; margin: 0; }
-
-.hero-title {
-	font-size: 28px;
-	font-weight: 700;
-	margin: 0 0 12px;
-	/* 直接在标题上指定颜色，避免被更高优先级选择器覆盖 */
-	color: #40c2a4;
-}
-
-.hero-subtitle {
-	font-size: 15px;
-	color: #57606a;
-	margin: 0 0 24px;
-}
-
-/* 与欢迎区域同样大小的内容区域 */
-.home-content-full {
-	min-height: 100vh;
+.home-main-full {
+	min-height: 200vh; /* 合并欢迎区与内容区的总体高度 */
 	width: 100%;
-	display: grid;
-	place-items: center;
-	padding: 5vh 10vw 5vh;
-	/* 浅色测试背景（与欢迎区区分） */
-	background: linear-gradient(180deg, #f8fbff 0%, #eef3fb 50%, #c4f8f7 100%);
+	background-color: #a8a6a6;
 }
 

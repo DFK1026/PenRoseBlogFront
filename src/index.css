@@ -1,5 +1,0 @@
-/* Reset margins to avoid any top gap from default UA styles */
-html, body {
-	margin: 0;
-	padding: 0;
-}

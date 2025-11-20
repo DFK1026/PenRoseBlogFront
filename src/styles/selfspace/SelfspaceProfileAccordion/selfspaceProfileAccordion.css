@@ -1,0 +1,34 @@
+.profilepanel-container {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.profilepanel-section {
+  min-height: 0;
+  width: 100%;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition: height 0.35s ease, min-height 0.35s ease;
+  will-change: height, min-height;
+  height: 100%;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+}
+
+.profilepanel-content {
+  width: 100%;
+  align-items: center;
+  height: 100%;
+  justify-content: stretch;
+}
+.selfspace-profilepanel-container {
+  /* 在 SelfSpace 左侧容器中按 25vw x 100vh 占满空间 */
+  display: block;
+  width: 100%;
+  height: 100%;
+}

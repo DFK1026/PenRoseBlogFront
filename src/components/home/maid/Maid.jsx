@@ -3,12 +3,6 @@ import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display/cubism4';
 import '../../../styles/home/maidstyle/Maid.css';
 
-// 将 Pixi 的 Ticker 注册给 Live2D，让 Live2D 的更新与 Pixi 的主循环同步
-/*Pixi 的 Ticker 是一个基于 requestAnimationFrame 的“主循环驱动器”；
-把 Live2D 绑定到这个驱动器上，
-就能让模型的动画更新和场景渲染在同一帧节奏里运行，
-保持一致的帧率、暂停/继续一致、性能也更可控
-*/
 Live2DModel.registerTicker(Ticker);
 
 export default function Maid() {

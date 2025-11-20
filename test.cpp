@@ -1,142 +1,26 @@
-#include<iostream>
-#include<vector>
-#include<deque>
-#include<string>
-#include<map>
-
+#include<bits/stdc++.h>
 using namespace std;
+// 题目：选礼物的最大价值（0-1 背包）
 
-//个位0~12对应的火星数字
-const vector<string> eartab_low = {"tret","jan","feb","mar","apr","may","jun","jly","aug","sep","oct","nov","dec"};
-//高位1~12对应的火星数字
-const vector<string> eartab_high = {"tam","hel","maa","huh","tou","kes","hei","elo","syy","lok","mer","jou"};
+// 描述 给定 N 件物品，每件物品有重量 w[i] 和价值 v[i]。你的背包容量为 W。每件物品最多选择一次，求在不超过容量的前提下，能获得的最大总价值。
 
-//火星数字转换为地球数字
-const map<string,int> martab_high = {
-    {"tam",1},
-    {"hel",2},
-    {"maa",3},
-    {"huh",4},
-    {"tou",5},
-    {"kes",6},
-    {"hei",7},
-    {"elo",8},
-    {"syy",9},
-    {"lok",10},
-    {"mer",11},
-    {"jou",12}
-};
-const map<string,int> martab_low = {
-    {"tret",0},
-    {"jan",1},
-    {"feb",2},
-    {"mar",3},
-    {"apr",4},
-    {"may",5},
-    {"jun",6},
-    {"jly",7},
-    {"aug",8},
-    {"sep",9},
-    {"oct",10},
-    {"nov",11},
-    {"dec",12}
-};
+// 输入格式
 
-//10的exp次方
-int func(int& exp){
-    
-    if(exp == 0){
-        return 1;
-    }
-    
-    int res = 1;
-    for(int i=0;i<exp;i++){
-        res *= 10;
-    }
-    return res;
-}
+// 第一行：两个整数 N 和 W
+// 接下来的 N 行：每行两个整数 w[i], v[i]
+// 含义：第 i 件物品的重量为 w[i]，价值为 v[i]
+// 输出格式
 
-//字符串转换成数字
-int tonum(string& str){
-    int len = str.length();
-    int res = 0;
-    for(int i=0;i<len;i++){
-        int exp = len - i - 1;
-        res += (str[i] - '0')*func(exp);
-    }
-    return res;
-}
+// 一行，一个整数，表示最大总价值
+// 约束
 
-//地球数字转换成火星数字
-string earth_to_mar(string& earthnum){
-    int len = earthnum.length();
-    int num = tonum(earthnum);
-    string res = "";
-    if(num < 13){
-        return eartab_low[num];
-    }
-    else{
-        while(num > 0){
-            int temp = num % 13;
-            if(num > 12){
-                res += eartab_high[temp];
-            }
-            else{
-                res += eartab_low[temp];
-            }
-            num /= 13;
-        }
-    }
-    return res;
-}
+// 1 ≤ N ≤ 200
+// 1 ≤ W ≤ 10000
+// 1 ≤ w[i] ≤ W
+// 0 ≤ v[i] ≤ 10^6
+// 目标是“最大价值”，允许背包不装满
+// 样例 1 输入 4 10 6 30 3 14 4 16 2 9 输出 46 解释：选重量 6(价值30) 和 重量 4(价值16)，总价值 46。
 
-//火星数字转换成地球数字
-int mar_to_earth(string& marnum){
-    string high = "";
-    string low = "";
-    int len = marnum.length();
-    int spaceindex = 0;
-    for(int i=0;i<len;i++){
-        if(marnum[i] = ' '){
-            spaceindex = i;
-            break;
-        }
-    }
-    if(spaceindex == 0){
-        for(int i=0;i<len;i++){
-            low += marnum[i];
-        }
-        if(low == "tam"){
-            return 13;
-        }
-        else{
-            return martab_low.at(low);
-        }
-    }
-    for(int i=0;i<=spaceindex;i++){
-        high += marnum[i];
-    }
-    for(int i=spaceindex+1;i<len;i++){
-        low += marnum[i];
-    }
-    return martab_high.at(high)*13 + martab_low.at(low);
-}
-int main(){
-    int n;
-    cin >> n;
-    vector<string> nums(n);
-    vector<string> res(n);
-    for(int i=0;i<n;i++){
-        getline(cin,nums[i]);
-        if(nums[i][0] > 57){
-            res[i] = mar_to_earth(nums[i]);
-        }
-        else{
-            res[i] = earth_to_mar(nums[i]);
-        }
-    }
-    for(int i=0;i<n;i++){
-        cout << res[i] << endl;
-    }
-    return 0;
-}
+// 样例 2 输入 3 5 6 10 7 20 8 30 输出 0 解释：所有物品都太重，无法选择，最佳为 0。
+
+// 样例 3 输入 5 7 1 1 3 4 4 5 5 7 2 3 输出 10 解释：选重量 5(7分) + 2(3分) = 7 重，价值 10。

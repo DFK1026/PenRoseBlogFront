@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import '../../styles/common/BannerNavbar.css';
+import '../../styles/common/NavAvatar.css';
+import NavAvatar from './NavAvatar.jsx';
+import { useAuthState } from '../../hooks/useAuthState.js';
 import ExampleSpring from './examples/ExampleSpring.jsx';
 import ExampleAutumn from './examples/ExampleAutumn.jsx';
 import ExampleWinter from './examples/ExampleWinter.jsx';
 
-// BannerNavbar：顶部导航 + 主题化可交互背景（效果由各主题 data.json 全权决定）
 export default function BannerNavbar({ bannerId, children }) {
-  const BASE_WIDTH = 1650; // 参考项目的基准宽度
+  const { isLoggedIn, avatarUrl } = useAuthState();
+  const BASE_WIDTH = 1650;
   const [navHidden, setNavHidden] = useState(false);
-  // 从 /banner/manifest.json 读取的主题清单
   const [manifest, setManifest] = useState([]);
   const [index, setIndex] = useState(0);
   const [layers, setLayers] = useState([]);
@@ -19,15 +21,14 @@ export default function BannerNavbar({ bannerId, children }) {
   const prevHiddenRef = useRef(false);
   const initializedRef = useRef(false);
   const containerRef = useRef(null);
-  const baseHeightRef = useRef(180); // 主题级基准画布高度，用于统一缩放
-  const layerRefs = useRef([]); // 每层 DOM 引用
-  const compTransformsRef = useRef([]); // 按 compensate 处理后的基础 transform 矩阵数组（6元组）
-  const mediaSizeRef = useRef([]); // 每层媒体的宽高（已补偿）
+  const baseHeightRef = useRef(180);
+  const layerRefs = useRef([]);
+  const compTransformsRef = useRef([]);
+  const mediaSizeRef = useRef([]);
   const compensateRef = useRef(1);
   const moveXRef = useRef(0);
   const animStateRef = useRef({ homing: false, startTime: 0, duration: 300 });
 
-  // 加载主题清单（public/banner/manifest.json）
   useEffect(() => {
     let dead = false;
     setError(null);
@@ -38,7 +39,6 @@ export default function BannerNavbar({ bannerId, children }) {
     return () => { dead = true; };
   }, []);
 
-  // 初始化激活主题索引：优先使用传入 bannerId（支持数字索引或名称匹配）
   useEffect(() => {
     if (!manifest.length) return;
     if (bannerId !== undefined && bannerId !== null) {
@@ -54,7 +54,6 @@ export default function BannerNavbar({ bannerId, children }) {
     }
   }, [manifest, bannerId, index]);
 
-  // 滚动显隐：下滚隐藏，上滚显示
   useEffect(() => {
     const onScroll = () => {
       const current = window.scrollY || document.documentElement.scrollTop || 0;
@@ -71,7 +70,6 @@ export default function BannerNavbar({ bannerId, children }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // 监听隐藏->显示：轮换主题
   useEffect(() => {
     const prev = prevHiddenRef.current;
     if (initializedRef.current && prev === true && navHidden === false && manifest.length > 0) {
@@ -83,13 +81,11 @@ export default function BannerNavbar({ bannerId, children }) {
   const activeId = useMemo(() => (manifest.length ? manifest[index]?.id : null), [manifest, index]);
   const isExample = useMemo(() => ['example-spring','example-autumn','example-winter'].includes(String(activeId)), [activeId]);
 
-  // 加载 data.json -> 构造 layers（完全数据驱动）
   useEffect(() => {
     let dead = false;
     setLoading(true); setError(null); setLayers([]);
     if (!activeId) { setLoading(false); return; }
     if (['example-spring','example-autumn','example-winter'].includes(String(activeId))) {
-      // 示例主题走专用组件渲染，不加载 data.json
       setLoading(false);
       return;
     }
@@ -120,23 +116,19 @@ export default function BannerNavbar({ bannerId, children }) {
     return () => { dead = true; };
   }, [activeId]);
 
-  // 尺寸与基础矩阵布局：根据窗口宽度计算 compensate，并写入媒体宽高以及基础 transform
   useEffect(() => {
   const el = containerRef.current;
     if (!el || !layers.length) return;
-  // 示例主题不参与标准层布局
   if (isExample) return;
     function layout() {
       const w = window.innerWidth || document.documentElement.clientWidth || el.clientWidth || BASE_WIDTH;
       const compensate = w > BASE_WIDTH ? w / BASE_WIDTH : 1;
       compensateRef.current = compensate;
-      // 生成每层的基础矩阵与媒体尺寸
       const compT = [];
       const mSizes = [];
       for (let i = 0; i < layers.length; i++) {
         const item = layers[i];
         const t = Array.isArray(item.transform) ? item.transform.slice() : [1,0,0,1,0,0];
-        // 平移量按补偿
         t[4] = (t[4] || 0) * compensate;
         t[5] = (t[5] || 0) * compensate;
         compT[i] = t;
@@ -144,7 +136,6 @@ export default function BannerNavbar({ bannerId, children }) {
       }
       compTransformsRef.current = compT;
       mediaSizeRef.current = mSizes;
-      // 立即应用尺寸到 DOM
       for (let i = 0; i < layerRefs.current.length; i++) {
         const layerEl = layerRefs.current[i];
         if (!layerEl) continue;
@@ -154,10 +145,8 @@ export default function BannerNavbar({ bannerId, children }) {
         media.style.width = mw ? mw + 'px' : '';
         media.style.height = mh ? mh + 'px' : '';
         media.style.filter = `blur(${layers[i]?.blur || 0}px)`;
-        // 应用基础矩阵
         const baseM = new DOMMatrix(compT[i] || [1,0,0,1,0,0]);
         layerEl.style.transform = baseM.toString();
-        // 初始透明度
         const op = Array.isArray(layers[i]?.opacity) ? parseFloat(layers[i].opacity[0]) : 1;
         layerEl.style.opacity = String(op);
       }
@@ -167,11 +156,10 @@ export default function BannerNavbar({ bannerId, children }) {
     return () => window.removeEventListener('resize', layout);
   }, [layers, isExample]);
 
-  // 指针交互 + 回正动画：以 DOMMatrix 直接应用到层，贴近参考项目
   useEffect(() => {
   const el = containerRef.current;
   if (!el || !layers.length) return;
-  if (isExample) return; // 示例主题自身管理交互
+  if (isExample) return;
     let raf = null;
     let initX = null;
     let wasInside = false;
@@ -209,7 +197,7 @@ export default function BannerNavbar({ bannerId, children }) {
       animStateRef.current.startTime = 0;
       if (!raf) raf = requestAnimationFrame(homing);
     };
-    function applyFor(progress /* 0..1 or undefined */) {
+    function applyFor(progress) {
       const compT = compTransformsRef.current || [];
       for (let i = 0; i < layerRefs.current.length; i++) {
         const layerEl = layerRefs.current[i];
@@ -220,10 +208,10 @@ export default function BannerNavbar({ bannerId, children }) {
         let moveX = moveXRef.current;
         let s = item.f ? item.f * moveX + 1 : 1;
         let g = (item.g || 0) ? item.g * moveX : 0;
-        let move = (item.a || 0) * moveX; // translateX
+        let move = (item.a || 0) * moveX;
         let m = base.multiply(new DOMMatrix([base.a * s, base.b, base.c, base.d * s, move, g]));
         if (item.deg) {
-          const deg = item.deg * moveX; // 实际上是角度系数 * 偏移量，沿用参考项目
+          const deg = item.deg * moveX;
           m = m.multiply(new DOMMatrix([
             Math.cos(deg),
             Math.sin(deg),
@@ -234,7 +222,6 @@ export default function BannerNavbar({ bannerId, children }) {
           ]));
         }
         if (typeof progress === 'number') {
-          // 回正时处理：将 e 分量/缩放/纵移/旋转插值回到基础
           const backMove = lerp((moveX * (item.a || 0)) + (compT[i]?.[4] || 0), (compT[i]?.[4] || 0), progress);
           const backG = lerp((item.g || 0) * moveX, 0, progress);
           const backS = lerp(item.f ? item.f * moveX + 1 : 1, 1, progress);
@@ -252,7 +239,6 @@ export default function BannerNavbar({ bannerId, children }) {
           }
           m = base.multiply(mm);
         }
-        // 透明度
         if (item.opacity) {
           const o0 = parseFloat(item.opacity[0] || 1);
           const o1 = parseFloat(item.opacity[1] || o0);
@@ -277,11 +263,9 @@ export default function BannerNavbar({ bannerId, children }) {
       applyFor(progress);
       if (progress < 1) raf = requestAnimationFrame(homing); else raf = null;
     }
-    // 事件绑定在 window，避免背景忽略指针
   window.addEventListener('mousemove', onMove, { passive: true });
     window.addEventListener('mouseleave', onLeave);
     window.addEventListener('blur', onLeave);
-    // 初始应用一次基础矩阵
     if (!raf) raf = requestAnimationFrame(animate);
     return () => {
       window.removeEventListener('mousemove', onMove);
@@ -291,10 +275,8 @@ export default function BannerNavbar({ bannerId, children }) {
     };
   }, [layers, isExample]);
 
-  // 资源路径重写
   const resolveSrc = (src) => {
     if (!src) return '';
-  // 将相对路径 ./assets/{id}/xxx 映射为 /banner/assets/{id}/xxx
   if (/^\.\/assets\//.test(src)) return src.replace(/^\.\/assets\//, '/banner/assets/');
     if (/^https?:\/\//i.test(src) || src.startsWith('/')) return src;
     return src;
@@ -364,6 +346,7 @@ export default function BannerNavbar({ bannerId, children }) {
         </div>
         <div className="nav-actions">
           {children}
+          <NavAvatar isLoggedIn={isLoggedIn} avatarUrl={avatarUrl} />
         </div>
       </div>
     </nav>

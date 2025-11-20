@@ -1,0 +1,47 @@
+/* 自空间整页容器 */
+.selfspace-page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: row; /* 左侧手风琴 + 右侧内容并列 */
+  position: relative;
+  background-color: #2b2a2b; /* 整体深色背景，可按需修改 */
+}
+
+/* 左侧面板：固定在最左侧，宽度 25vw */
+.selfspace-left-panel {
+  width: 25vw;
+  min-width: 260px;
+  max-width: 420px;
+  height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+/* 左侧内部：放置 selfspaceProfileAccordion */
+.selfspace-left-panel-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+/* 手风琴容器在左侧块内撑满即可 */
+.selfspace-left-panel-inner .selfspace-profilepanel-container {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 右侧内容区：占据剩余空间 */
+.selfspace-right-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-sizing: border-box;
+}

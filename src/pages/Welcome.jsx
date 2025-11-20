@@ -6,13 +6,9 @@ import '../styles/welcome/Welcome.css';
 export default function Welcome() {
   const navigate = useNavigate();
   const [showRegister, setShowRegister] = useState(false);
-
-  //记住我勾选状态，携带token，jwt鉴权
   const [rememberMe, setRememberMe] = useState(() => {
     return !!localStorage.getItem('rememberLogin');
   });
-
-  //页面加载时自动填充用户名和密码
   const [loginData, setLoginData] = useState(() => {
     const saved = localStorage.getItem('rememberLogin');
     if (saved) {
@@ -24,20 +20,14 @@ export default function Welcome() {
     }
     return { username: '', password: '' };
   });
-
-  //注册表单的数据管理
   const [registerData, setRegisterData] = useState({
     username: '',
     password: '',
     confirmPassword: '',
     gender: '',
   });
-
-  //消息内容和类型（success/error）
   const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState(''); // 'success' | 'error'
-
-  // 提示信息在展示后2秒自动消失
+  const [messageType, setMessageType] = useState('');
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(() => {
@@ -46,16 +36,12 @@ export default function Welcome() {
     }, 2000);
     return () => clearTimeout(timer);
   }, [message]);
-
-  // 性别选择资源与当前选中索引（基于 registerData.gender 推导，未选择时展示第一个）
   const genderItems = [
     { key: '男', img: '/imgs/loginandwelcomepanel/1.png' },
     { key: '女', img: '/imgs/loginandwelcomepanel/2.png' },
     { key: '保密', img: '/imgs/loginandwelcomepanel/3.png' },
   ];
   const selectedGenderIndex = Math.max(0, genderItems.findIndex(g => g.key === registerData.gender));
-
-  //登录表单提交
   const handleLogin = async (e) => {
     e.preventDefault();
     setMessage('');
@@ -67,16 +53,17 @@ export default function Welcome() {
       });
       setMessage(res.data.msg);
       setMessageType(res.data.code === 200 ? 'success' : 'error');
-      // 登录成功后保存token
       if (res.data.code === 200 && res.data.data) {
         localStorage.setItem('token', res.data.data);
-        // 记住我：保存用户名和密码
+        // 若后端返回头像地址，可在此一并存储，例如：res.data.avatarUrl
+        // if (res.data.avatarUrl) localStorage.setItem('avatarUrl', res.data.avatarUrl);
+        // 通知应用内其他组件刷新登录态
+        window.dispatchEvent(new Event('auth-changed'));
         if (rememberMe) {
           localStorage.setItem('rememberLogin', JSON.stringify({ username: loginData.username, password: loginData.password }));
         } else {
           localStorage.removeItem('rememberLogin');
         }
-        // 跳转到主页
         navigate('/home');
       }
     } catch (err) {
@@ -89,31 +76,25 @@ export default function Welcome() {
       }
     }
   };
-
-  //注册表单提交
   const handleRegister = async (e) => {
     e.preventDefault();
     setMessage('');
     setMessageType('');
-    // 用户名校验：5-15位，仅数字字母下划线
     if (!registerData.username.match(/^[A-Za-z0-9_]{5,15}$/)) {
       setMessage('用户名必须为5-15位，仅支持数字、字母、下划线');
       setMessageType('error');
       return;
     }
-    // 密码校验：8-12位，必须包含数字和字母
     if (!registerData.password.match(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,12}$/)) {
       setMessage('密码必须为8-12位，且包含数字和字母，不允许其他字符');
       setMessageType('error');
       return;
     }
-    // 性别校验（可选）
     if (registerData.gender && !['男', '女', '保密'].includes(registerData.gender)) {
       setMessage('性别只能为男、女或保密');
       setMessageType('error');
       return;
     }
-    // 两次密码一致性校验
     if (registerData.password !== registerData.confirmPassword) {
       setMessage('两次密码不一致');
       setMessageType('error');
@@ -142,7 +123,6 @@ export default function Welcome() {
     <div className="container">
     <div className="welcome">
   <div className={`pinkbox${showRegister ? ' show-register' : ''}`}>
-          {/* 注册 */}
           <div className={`signup${showRegister ? '' : ' nodisplay'}`}>
             <h1>Register</h1>
             <form autoComplete="off" onSubmit={handleRegister}>
@@ -152,7 +132,6 @@ export default function Welcome() {
                   <input type="password" placeholder="Password" value={registerData.password} onChange={e => setRegisterData({ ...registerData, password: e.target.value })} />
                   <input type="password" placeholder="Confirm Password" value={registerData.confirmPassword} onChange={e => setRegisterData({ ...registerData, confirmPassword: e.target.value })} />
                 </div>
-                {/* 性别选择（图片选项卡样式） */}
                 <div className="form-gender">
                   <div className="gender-selector" role="group" aria-label="Gender">
                     <div className="gender-top">
@@ -188,7 +167,6 @@ export default function Welcome() {
               <button className="button submit" type="submit">Create Account</button>
             </form>
           </div>
-          {/* 登录 */}
           <div className={`signin${showRegister ? ' nodisplay' : ''}`}>
             <h1>Sign In</h1>
             <form className="more-padding" autoComplete="off" onSubmit={handleLogin}>
@@ -201,7 +179,6 @@ export default function Welcome() {
               <button className="button sumbit" type="submit">Login</button>
             </form>
           </div>
-          {/* 错误/成功提示信息，样式区分 */}
           {message && (
             <p
               role="alert"

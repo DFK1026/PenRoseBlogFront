@@ -3,13 +3,11 @@ import React, { useEffect, useRef } from 'react';
 export default function ExampleSpring() {
   const hostRef = useRef(null);
   const initTransformsRef = useRef([]);
-  // no-op ref, removed after moving to DOM-created canvas
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const imgs = Array.from(host.querySelectorAll('.view img'));
-    // 记录初始 transform 与 opacity
     initTransformsRef.current = imgs.map((el) => {
       const cs = window.getComputedStyle(el);
       return {
@@ -63,7 +61,6 @@ export default function ExampleSpring() {
     };
   }, []);
 
-  // Sakura falling canvas overlay
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -88,11 +85,11 @@ export default function ExampleSpring() {
       }
       init() {
         this.x = Math.random() * W;
-        this.y = Math.random() * H * 0.4; // 从顶部 40% 区域产生更自然
+        this.y = Math.random() * H * 0.4;
         this.vx = Math.random() * SPEED_X;
         this.vy = Math.random() * SPEED_Y;
         const scale = SCALES[(Math.random() * (SCALES.length - 1)) | 0];
-        this.size = 250 * scale; // CSS 像素
+        this.size = 250 * scale;
         const src = FLOW_SRC[Math.random() * 10 > 5 ? 0 : 1];
         const img = new Image();
         img.src = src;
@@ -164,7 +161,6 @@ export default function ExampleSpring() {
       <div className="view"><img src="/banner/assets/example-spring/bilibili-spring-people-4.png" data-move-multiple="1.104" /></div>
       <div className="view"><img src="/banner/assets/example-spring/bilibili-spring-view-10.png" data-move-multiple="0.781" /></div>
       <div className="view"><img src="/banner/assets/example-spring/bilibili-spring-view-11.png" data-move-multiple="0.546" /></div>
-      {/* 可选：这里可加一个 <canvas> 复现樱花飘落 */}
     </div>
   );
 }
