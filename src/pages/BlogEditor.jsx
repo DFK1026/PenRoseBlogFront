@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BannerNavbar from '../components/common/BannerNavbar';
@@ -10,8 +9,6 @@ const BlogEditor = () => {
   const [content, setContent] = useState('');
   const [cover, setCover] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
-
-
 
   const userId = localStorage.getItem('userId');
   const navigate = useNavigate();
@@ -58,45 +55,51 @@ const BlogEditor = () => {
   return (
     <div className="blog-editor-container">
       <BannerNavbar />
-      <h2>发布新文章</h2>
-      <form onSubmit={handleSubmit} encType="multipart/form-data">
-        <input
-          type="text"
-          placeholder="请输入标题"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          required
-          className="blog-editor-title-input"
-        />
-        <div className="blog-editor-cover-row">
-          <label className="blog-editor-cover-label">封面</label>
+      <div className="blog-editor-main">
+        <h2 className="blog-editor-title">发布新文章</h2>
+        <form onSubmit={handleSubmit} encType="multipart/form-data">
           <input
-            type="file"
-            accept="image/*"
-            onChange={handleCoverChange}
-            style={{ display: 'inline-block' }}
+            type="text"
+            placeholder="请输入标题"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            required
+            className="blog-editor-title-input"
           />
-          {coverPreview && (
-            <div className="blog-editor-cover-preview">
-              <img src={coverPreview} alt="封面预览" className="blog-editor-cover-img" />
+          <div className="blog-editor-cover-row">
+            <label className="blog-editor-cover-label">封面</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleCoverChange}
+              className="blog-editor-cover-input"
+            />
+            {coverPreview && (
+              <div className="blog-editor-cover-preview">
+                <img src={coverPreview} alt="封面预览" className="blog-editor-cover-img" />
+              </div>
+            )}
+          </div>
+          <div className="blog-editor-md-row">
+            <div className="blog-editor-md-wrapper">
+              <MDEditor
+                value={content}
+                onChange={setContent}
+                height={350}
+                preview="edit"
+                className="blog-editor-md-editor"
+              />
             </div>
-          )}
-        </div>
-        <div style={{marginBottom: '16px'}}>
-          <MDEditor
-            value={content}
-            onChange={setContent}
-            height={350}
-            preview="edit"
-          />
-        </div>
-        <button
-          type="submit"
-          className="blog-editor-submit-btn"
-        >
-          发布
-        </button>
-      </form>
+          </div>
+          <button
+            type="submit"
+            className="blog-editor-submit-btn"
+          >
+            发布
+          </button>
+        </form>
+      </div>
+      <div className="blog-editor-top-mask" />
     </div>
   );
 };

@@ -110,6 +110,19 @@ html, body, #root {
   margin: 0;
 }
 
+/* 查找好友 按钮位置：放在第2格并居中 */
+.nav-search-cell {
+  grid-column: 2 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+.nav-search-cell .nav-edit-blog-btn {
+  background: linear-gradient(90deg, #6a8cff 0%, #8fd3f4 100%);
+  box-shadow: 0 2px 8px rgba(191,200,218,0.6);
+}
+
 /* 移除原 nav-actions 区域的右侧布局（如有） */
 .banner-navbar.is-hidden { transform: translateY(-110%); }
 

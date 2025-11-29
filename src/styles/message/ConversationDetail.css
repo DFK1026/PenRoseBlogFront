@@ -1,0 +1,86 @@
+/* ConversationDetail 样式 */
+.conversation-detail-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e3e8f0 0%, #c9d6ff 100%);
+  box-sizing: border-box;
+}
+.conversation-detail-container {
+  max-width: 700px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(80,120,200,0.10);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  min-height: 600px;
+}
+.conversation-detail-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2a3550;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.conversation-detail-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 18px;
+  padding-right: 4px;
+}
+.conversation-detail-msg {
+  background: #f7faff;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  box-shadow: 0 2px 8px #e5e7eb;
+  color: #23272f;
+  max-width: 70%;
+  word-break: break-all;
+  position: relative;
+}
+.conversation-detail-msg.self {
+  background: linear-gradient(90deg, #e3e8f0 0%, #c9d6ff 100%);
+  margin-left: auto;
+  text-align: right;
+}
+.conversation-detail-msgtime {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+.conversation-detail-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.conversation-detail-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #bfc8da;
+  font-size: 16px;
+  background: #f7faff;
+  color: #23272f;
+  outline: none;
+  transition: border 0.2s;
+}
+.conversation-detail-input:focus {
+  border-color: #6a8cff;
+}
+.conversation-detail-sendbtn {
+  padding: 8px 22px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #6a8cff 0%, #8fd3f4 100%);
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+  border: none;
+  box-shadow: 0 2px 8px #bfc8da;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.conversation-detail-sendbtn:hover {
+  background: linear-gradient(90deg, #5a7cff 0%, #7fc3e4 100%);
+}

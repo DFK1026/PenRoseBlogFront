@@ -13,8 +13,6 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
     if (containerRef.current) {
       setContainerHeight(containerRef.current.offsetHeight);
     }
-
-    // 监听容器尺寸变化（例如导航栏收起导致 left-panel 高度变化）
     let ro = null;
     try {
       if (window.ResizeObserver && containerRef.current) {
@@ -26,9 +24,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
         });
         ro.observe(containerRef.current);
       }
-    } catch {
-      ro = null;
-    }
+    } catch { /* empty */ ro = null; }
 
     const onWinResize = () => {
       if (containerRef.current) setContainerHeight(containerRef.current.offsetHeight);
@@ -37,11 +33,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
 
     return () => {
       window.removeEventListener('resize', onWinResize);
-      try {
-        if (ro && ro.disconnect) ro.disconnect();
-      } catch {
-        // ignore
-      }
+      try { if (ro && ro.disconnect) ro.disconnect(); } catch { /* ignore */ }
     };
   }, [panelHeight]);
 
@@ -50,12 +42,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
     return hoverIdx === idx ? containerHeight * 0.7 : containerHeight * 0.1;
   };
 
-  // 只有不在编辑区时才允许自动收回
-  const handleMouseLeave = () => {
-    if (hoverIdx !== 3) {
-      setHoverIdx(0);
-    }
-  };
+  const handleMouseLeave = () => { if (hoverIdx !== 3) setHoverIdx(0); };
 
   const panels = [0, 1, 2, 3];
 
@@ -71,14 +58,21 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState('');
 
-  // userId 必须为有效数字，且 token 必须存在
+  // 本地暂存头像和背景文件及预览
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
+  const [backgroundFile, setBackgroundFile] = useState(null);
+  const [backgroundPreview, setBackgroundPreview] = useState('');
+
+  // userId & token
   const rawUserId = localStorage.getItem('userId');
   const token = localStorage.getItem('token');
   const userId = rawUserId && /^\d+$/.test(rawUserId) ? Number(rawUserId) : null;
 
-  // 只在第四个面板激活时加载用户信息
+  // 仅在第四个面板激活时加载用户信息
   useEffect(() => {
     if (hoverIdx === 3) {
+      console.log('[ProfileAccordion] 加载用户信息 userId:', userId, 'token:', token);
       if (!userId || !token) {
         setEditMsg('用户信息无效，请重新登录');
         setProfile(initialProfile);
@@ -90,6 +84,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
         headers: { Authorization: `Bearer ${token}` }
       })
         .then(res => {
+          console.log('[ProfileAccordion] 获取用户信息返回:', res.data);
           if (res.data && res.data.code === 200 && res.data.data) {
             setProfile(res.data.data);
           } else {
@@ -97,7 +92,8 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
             setEditMsg(res.data?.msg || res.data?.message || '获取用户信息失败');
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.log('[ProfileAccordion] 获取用户信息异常:', err);
           setProfile(initialProfile);
           setEditMsg('获取用户信息异常');
         })
@@ -105,7 +101,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
     }
   }, [hoverIdx, userId, token, initialProfile]);
 
-  // 在组件挂载时先从 localStorage 初始化 profile，保证进入个人空间时左侧面板能立即显示
+  // 组件挂载时从 localStorage 初始化 profile（用于快速显示）
   useEffect(() => {
     try {
       const storedAvatar = localStorage.getItem('avatarUrl') || '';
@@ -121,127 +117,144 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
         backgroundUrl: storedBackground,
         gender: storedGender,
       }));
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
-  // 编辑表单变更
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
     setProfile(prev => ({ ...prev, [name]: value }));
   };
 
-  // 保存用户信息
-  const handleProfileSave = () => {
-    if (!userId) {
-      setEditMsg('用户ID无效，请重新登录');
-      return;
-    }
-    setEditLoading(true);
-    setEditMsg('');
-    const token = localStorage.getItem('token');
-    axios.put(`/api/user/profile/${userId}`, profile, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
-    })
-      .then(res => {
-        if (res.data && res.data.code === 200) {
-          setEditMsg('保存成功');
-          // 保存成功后，刷新localStorage昵称和性别，并通知其他组件刷新
-          localStorage.setItem('nickname', profile.nickname || '');
-          localStorage.setItem('gender', profile.gender || '');
-          window.dispatchEvent(new Event('auth-changed'));
-        } else {
-          setEditMsg(res.data?.msg || res.data?.message || '保存失败');
-        }
-      })
-      .catch(() => setEditMsg('保存异常'))
-      .finally(() => setEditLoading(false));
-  };
-
-  // 头像上传
-  const handleAvatarUpload = async (e) => {
-    if (!userId) {
-      setEditMsg('用户ID无效，请重新登录');
-      return;
-    }
+  const handleAvatarSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type)) {
       setEditMsg('仅支持图片/gif作为头像');
       return;
     }
-    setEditMsg('头像上传中...');
-    const formData = new FormData();
-    formData.append('file', file);
-    const token = localStorage.getItem('token');
-    try {
-      const res = await axios.post(`/api/user/profile/${userId}/avatar`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-      if (res.data && res.data.code === 200 && res.data.data) {
-        setEditMsg('头像上传成功');
-        // 上传成功后刷新用户信息
-        axios.get(`/api/user/profile/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(res2 => {
-          if (res2.data && res2.data.code === 200 && res2.data.data) {
-            setProfile(res2.data.data);
-            localStorage.setItem('avatarUrl', res2.data.data.avatarUrl || '');
-            window.dispatchEvent(new Event('auth-changed'));
-          }
-        });
-      } else {
-        setEditMsg(res.data?.msg || res.data?.message || '头像上传失败');
-      }
-    } catch {
-      setEditMsg('头像上传异常');
-    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
   };
 
-  // 背景上传
-  const handleBackgroundUpload = async (e) => {
-    if (!userId) {
-      setEditMsg('用户ID无效，请重新登录');
-      return;
-    }
+  const handleBackgroundSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!/^image\/(jpeg|png|gif|webp)$/.test(file.type) && !/^video\/(mp4|webm)$/.test(file.type)) {
       setEditMsg('背景仅支持图片/gif/mp4/webm');
       return;
     }
-    setEditMsg('背景上传中...');
-    const formData = new FormData();
-    formData.append('file', file);
-    const token = localStorage.getItem('token');
+    setBackgroundFile(file);
+    setBackgroundPreview(URL.createObjectURL(file));
+  };
+
+  // 保存用户信息（统一上传头像/背景并保存）
+  const handleProfileSave = async () => {
+    console.log('[ProfileAccordion] 保存资料 userId:', userId, 'profile:', profile);
+    if (!userId) {
+      setEditMsg('用户ID无效，请重新登录');
+      return;
+    }
+    setEditLoading(true);
+    setEditMsg('');
+    const tokenLocal = localStorage.getItem('token');
+    console.log('[ProfileAccordion] 保存资料 token:', tokenLocal);
+
+    // 初始使用当前 profile 中可能已有的 url
+    let avatarUrl = profile.avatarUrl || '';
+    let backgroundUrl = profile.backgroundUrl || '';
+
     try {
-      const res = await axios.post(`/api/user/profile/${userId}/background`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-      if (res.data && res.data.code === 200 && res.data.data) {
-        setEditMsg('背景上传成功');
-        // 上传成功后刷新用户信息
-        axios.get(`/api/user/profile/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(res2 => {
-          if (res2.data && res2.data.code === 200 && res2.data.data) {
-            setProfile(res2.data.data);
-            localStorage.setItem('backgroundUrl', res2.data.data.backgroundUrl || '');
-            window.dispatchEvent(new Event('auth-changed'));
+      // 1) 上传头像（如有）
+      if (avatarFile) {
+        setEditMsg('正在上传头像...');
+        const formData = new FormData();
+        formData.append('file', avatarFile);
+        console.log('[ProfileAccordion] 上传头像 userId:', userId, 'file:', avatarFile);
+        const res = await axios.post(`/api/user/profile/${userId}/avatar`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            ...(tokenLocal ? { Authorization: `Bearer ${tokenLocal}` } : {})
           }
         });
-      } else {
-        setEditMsg(res.data?.msg || res.data?.message || '背景上传失败');
+        console.log('[ProfileAccordion] 上传头像返回:', res.data);
+        const uploadData = res.data && res.data.data;
+        if (res.data && res.data.code === 200 && uploadData) {
+          // 兼容后端返回两种常见格式：字符串路径 或 包含 avatarUrl 字段的对象
+          if (typeof uploadData === 'string') {
+            avatarUrl = uploadData;
+          } else if (typeof uploadData === 'object') {
+            avatarUrl = uploadData.avatarUrl || uploadData.path || avatarUrl;
+          }
+          // 持久化展示用
+          localStorage.setItem('avatarUrl', avatarUrl || '');
+        } else {
+          setEditMsg(res.data?.msg || res.data?.message || '头像上传失败');
+          setEditLoading(false);
+          return;
+        }
       }
-    } catch {
-      setEditMsg('背景上传异常');
+
+      // 2) 上传背景（如有）
+      if (backgroundFile) {
+        setEditMsg('正在上传背景...');
+        const formData = new FormData();
+        formData.append('file', backgroundFile);
+        console.log('[ProfileAccordion] 上传背景 userId:', userId, 'file:', backgroundFile);
+        const res = await axios.post(`/api/user/profile/${userId}/background`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            ...(tokenLocal ? { Authorization: `Bearer ${tokenLocal}` } : {})
+          }
+        });
+        console.log('[ProfileAccordion] 上传背景返回:', res.data);
+        const uploadData = res.data && res.data.data;
+        if (res.data && res.data.code === 200 && uploadData) {
+          if (typeof uploadData === 'string') {
+            backgroundUrl = uploadData;
+          } else if (typeof uploadData === 'object') {
+            backgroundUrl = uploadData.backgroundUrl || uploadData.path || backgroundUrl;
+          }
+          localStorage.setItem('backgroundUrl', backgroundUrl || '');
+        } else {
+          setEditMsg(res.data?.msg || res.data?.message || '背景上传失败');
+          setEditLoading(false);
+          return;
+        }
+      }
+
+      // 3) 最后保存 profile（直接用合并出的 newProfile，保证包含刚拿到的路径）
+      setEditMsg('正在保存信息...');
+      const newProfile = { ...profile, avatarUrl, backgroundUrl };
+      console.log('[ProfileAccordion] PUT /api/user/profile/', userId, newProfile);
+      const res = await axios.put(`/api/user/profile/${userId}`, newProfile, {
+        headers: tokenLocal ? { Authorization: `Bearer ${tokenLocal}` } : {}
+      });
+      console.log('[ProfileAccordion] 保存资料返回:', res.data);
+      if (res.data && res.data.code === 200) {
+        setEditMsg('保存成功');
+        localStorage.setItem('nickname', newProfile.nickname || '');
+        localStorage.setItem('gender', newProfile.gender || '');
+        window.dispatchEvent(new Event('auth-changed'));
+
+        // 清空本地文件和预览
+        setAvatarFile(null);
+        setAvatarPreview('');
+        setBackgroundFile(null);
+        setBackgroundPreview('');
+
+        // 更新组件 state（显示最新）
+        setProfile(newProfile);
+      } else {
+        setEditMsg(res.data?.msg || res.data?.message || '保存失败');
+      }
+    } catch (err) {
+      console.log('[ProfileAccordion] 保存异常:', err);
+      // 如果后端返回了详细信息，尝试显示
+      const serverMsg = err?.response?.data?.msg || err?.response?.data?.message;
+      if (serverMsg) setEditMsg(serverMsg);
+      else setEditMsg('保存异常');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -272,7 +285,6 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
               onMouseEnter={() => setHoverIdx(idx)}
             >
               <div className={`profilepanel-content${isActive ? ' profilepanel-content-active' : ' profilepanel-content-collapsed'}`}>
-                {/* 用户背景作为第一模块背景 */}
                 {profile.backgroundUrl && (
                   /\.(mp4|webm)$/i.test(profile.backgroundUrl)
                     ? (
@@ -330,11 +342,11 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
                         </div>
                         <div className="form-group">
                           <label>头像：</label>
-                          <input type="file" accept="image/*,image/gif" onChange={handleAvatarUpload} style={{marginTop:4}} />
-                          {profile.avatarUrl && (
+                          <input type="file" accept="image/*,image/gif" onChange={handleAvatarSelect} style={{ marginTop: 4 }} />
+                          {(avatarPreview || profile.avatarUrl) && (
                             <div className="profilepanel-avatar-preview">
                               <img
-                                src={resolveUrl(profile.avatarUrl)}
+                                src={avatarPreview || resolveUrl(profile.avatarUrl)}
                                 alt="头像预览"
                                 className="profilepanel-avatar-img"
                               />
@@ -343,23 +355,17 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
                         </div>
                         <div className="form-group">
                           <label>背景：</label>
-                          <input type="file" accept="image/*,image/gif,video/mp4,video/webm" onChange={handleBackgroundUpload} style={{marginTop:4}} />
-                          {profile.backgroundUrl && (
+                          <input type="file" accept="image/*,image/gif,video/mp4,video/webm" onChange={handleBackgroundSelect} style={{ marginTop: 4 }} />
+                          {(backgroundPreview || profile.backgroundUrl) && (
                             <div className="profilepanel-bg-preview">
-                              {/\.(mp4|webm)$/i.test(profile.backgroundUrl)
-                                  ? (
-                                  <video
-                                    src={resolveUrl(profile.backgroundUrl)}
-                                    controls
-                                    className="profilepanel-bg-video"
-                                  />
-                                ) : (
-                                  <img
-                                    src={resolveUrl(profile.backgroundUrl)}
-                                    alt="背景预览"
-                                    className="profilepanel-bg-img"
-                                  />
-                                )}
+                              {(() => {
+                                const url = backgroundPreview || profile.backgroundUrl;
+                                if (/\.(mp4|webm)$/i.test(url)) {
+                                  return <video src={url} controls className="profilepanel-bg-video" />;
+                                } else {
+                                  return <img src={url} alt="背景预览" className="profilepanel-bg-img" />;
+                                }
+                              })()}
                             </div>
                           )}
                         </div>

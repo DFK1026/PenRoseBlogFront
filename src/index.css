@@ -16,3 +16,16 @@ body { overflow-x: hidden; }
 /* 基础链接/图片行为 */
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; height: auto; display: block; }
+
+/* 全局预留导航栏高度，避免固定导航覆盖页面内容。
+	 导航高度变量 --navH 在 BannerNavbar.css 中定义为 15vh，
+	 在这里提供同名变量的默认值并将其应用为 body 的 padding-top。 */
+:root {
+	--navH: 15vh;
+}
+
+body {
+	/* 保持已有 overflow-x 控制 */
+	overflow-x: hidden;
+	padding-top: var(--navH);
+}

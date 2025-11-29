@@ -56,7 +56,23 @@ export default function ArticleDetail(){
     }catch(e){ console.error(e); }
   };
 
-  
+  useEffect(() => {
+    // 页面滚动时触发导航栏收起/显示
+    const handleScroll = () => {
+      const current = window.scrollY || document.documentElement.scrollTop || 0;
+      if (current > 50) {
+        document.documentElement.classList.add('banner-is-hidden');
+      } else {
+        document.documentElement.classList.remove('banner-is-hidden');
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll(); // 初始化一次
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.documentElement.classList.remove('banner-is-hidden');
+    };
+  }, []);
 
   const md = new MarkdownIt();
   if(!post) return (<div><BannerNavbar /> <div style={{padding:24}}>加载中...</div></div>);

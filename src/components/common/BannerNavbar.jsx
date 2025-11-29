@@ -56,83 +56,80 @@ export default function BannerNavbar({ bannerId }) {
   }, [manifest, bannerId, index]);
 
   useEffect(() => {
-    // 更稳健的滚动获取：优先使用 document.scrollingElement（适配不同滚动容器）
-    const scroller = document.scrollingElement || document.documentElement || document.body;
+    // 更稳健的滚动处理：除了 window 外，自动为页面中所有可滚动容器添加监听器，
+    // 这样在使用内部滚动容器（如侧边面板或右侧主内容区）时也能正确响应导航显示/隐藏。
     let ticking = false;
-    const getScrollTop = () => {
-      try {
-        const vals = [
-          typeof window.pageYOffset === 'number' ? window.pageYOffset : 0,
-          document.documentElement && typeof document.documentElement.scrollTop === 'number' ? document.documentElement.scrollTop : 0,
-          document.body && typeof document.body.scrollTop === 'number' ? document.body.scrollTop : 0,
-          scroller && typeof scroller.scrollTop === 'number' ? scroller.scrollTop : 0,
-        ];
-        return Math.max(...vals, 0);
-      } catch {
-        return window.pageYOffset || document.documentElement.scrollTop || 0;
-      }
-    };
-    const handle = () => {
+    const handleScrollEvent = (source) => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const current = getScrollTop();
-        const last = lastScrollRef.current;
-        const goingDown = current > last;
-        const delta = Math.abs(current - last);
-        // 调试日志已移除，保留核心逻辑
-        if (current <= 0) {
-          setNavHidden(false);
-        } else if (goingDown && delta > 3 && current > 50) {
-          setNavHidden(true);
-        } else if (!goingDown && delta > 3) {
-          setNavHidden(false);
+        try {
+          const current = Math.max(
+            0,
+            (typeof source.scrollTop === 'number' ? source.scrollTop : (window.pageYOffset || 0))
+          );
+          const last = lastScrollRef.current || 0;
+          const goingDown = current > last;
+          const delta = Math.abs(current - last);
+          if (current <= 0) {
+            setNavHidden(false);
+          } else if (goingDown && delta > 3 && current > 50) {
+            setNavHidden(true);
+          } else if (!goingDown && delta > 3) {
+            setNavHidden(false);
+          }
+          lastScrollRef.current = current;
+        } catch {
+          // ignore
         }
-        lastScrollRef.current = current;
         ticking = false;
       });
     };
 
-    scroller.addEventListener('scroll', handle, { passive: true });
-
-    // 备选：当滚动值始终为 0 时，使用 wheel/touch 事件判断方向
-    let touchStartY = null;
-    const onWheel = (e) => {
-      const dy = e.deltaY || 0;
-      if (Math.abs(dy) < 6) return;
-      if (dy > 0) {
-        setNavHidden(true);
-      } else if (dy < 0) {
-        setNavHidden(false);
+    const listeners = new Map();
+    const addListener = (el) => {
+      if (!el || listeners.has(el)) return;
+      const fn = () => handleScrollEvent(el);
+      try {
+        el.addEventListener('scroll', fn, { passive: true });
+        listeners.set(el, fn);
+      } catch {
+        // ignore
       }
-      // 也尝试更新 lastScrollRef 基线
-      lastScrollRef.current = getScrollTop();
-    };
-    const onTouchStart = (e) => {
-      if (!e.touches || !e.touches.length) return; touchStartY = e.touches[0].clientY;
-    };
-    const onTouchMove = (e) => {
-      if (!e.touches || !e.touches.length || touchStartY == null) return;
-      const y = e.touches[0].clientY;
-      const dy = touchStartY - y;
-      if (Math.abs(dy) < 6) return;
-      if (dy > 0) setNavHidden(true); else setNavHidden(false);
-      lastScrollRef.current = getScrollTop();
-      touchStartY = y;
     };
 
-    window.addEventListener('wheel', onWheel, { passive: true });
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    // add common containers
+    addListener(window);
+    const docEl = document.scrollingElement || document.documentElement || document.body;
+    addListener(docEl);
 
-    // 立即运行一次，初始化 lastScroll
-    handle();
+    // scan for any scrollable elements in the document and attach listener
+    try {
+      const all = Array.from(document.querySelectorAll('*'));
+      all.forEach(el => {
+        try {
+          const style = window.getComputedStyle(el);
+          const overflowY = style.getPropertyValue('overflow-y');
+          if ((overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+            addListener(el);
+          }
+        } catch {
+          // ignore
+        }
+      });
+    } catch {
+      // ignore
+    }
+
+    // initialize lastScrollRef from scrolling element
+    try { lastScrollRef.current = (docEl && typeof docEl.scrollTop === 'number') ? docEl.scrollTop : (window.pageYOffset || 0); } catch { /* ignore init error */ }
 
     return () => {
-      scroller.removeEventListener('scroll', handle);
-      window.removeEventListener('wheel', onWheel);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
+      // remove all listeners
+      listeners.forEach((fn, el) => {
+        try { el.removeEventListener('scroll', fn); } catch { /* ignore */ }
+      });
+      listeners.clear();
     };
   }, []);
 
@@ -417,7 +414,22 @@ export default function BannerNavbar({ bannerId }) {
             </div>
           </a>
         </div>
+        {/* 在 logo 右侧增加“查找好友”按钮（与私信/编辑按钮风格一致） */}
+        <div className="nav-search-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Link to="/users/search" className="nav-edit-blog-btn" style={{ margin: 0 }}>查找好友</Link>
+        </div>
+
         {/* nav-inner 右侧仅保留编辑文章按钮和头像 */}
+        {/* nav-inner 右侧第6格：私信按钮 */}
+        <div className="nav-message-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Link
+            to="/messages"
+            className="nav-edit-blog-btn"
+            style={{ margin: 0 }}
+          >
+            私信
+          </Link>
+        </div>
         {/* nav-inner 右侧第7格：编辑文章按钮 */}
         <div className="nav-edit-cell">
           <Link

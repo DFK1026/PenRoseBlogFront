@@ -4,7 +4,7 @@
   flex-direction: row; /* 左侧手风琴 + 右侧内容并列 */
   position: relative;
   /* 页面背景由全局 `index.css` 管理，避免局部覆盖引起左右空白 */
-  padding-top: 15vh; /* 为 BannerNavbar 预留空间（与 --navH 保持一致） */
+  /* 顶部导航占位已由全局 `index.css` 的 `padding-top: var(--navH)` 提供 */
   box-sizing: border-box;
 }
 
@@ -59,13 +59,20 @@
   box-sizing: border-box;
 }
 /* 仅保留自空间基础布局 */
-.selfspace-page {
   min-height: 100vh;
   width: 100%;
   display: flex;
   flex-direction: row;
   position: relative;
   background-color: #bebcbe;
-  padding-top: 15vh;
+  box-sizing: border-box;
+}
+selfspace-page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  background-color: #bebcbe;
   box-sizing: border-box;
 }

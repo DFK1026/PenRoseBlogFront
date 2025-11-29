@@ -1,47 +1,175 @@
+/* BlogEditor 样式美化升级 */
 .blog-editor-container {
-  min-height: 85vh;
-  margin-top: 15vh;
-  box-sizing: border-box;
-  width: 100vw;
-  overflow-x: hidden;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #e3e8f0 0%, #c9d6ff 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-bottom: 40px;
   position: relative;
-  padding-bottom: 80px;
+  /* 顶部导航占位由全局 `index.css` 的 `padding-top: var(--navH)` 提供 */
+}
+
+.blog-editor-main {
+  max-width: 800px;
+  width: 100%;
+  margin: 64px auto 0 auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 8px 32px 0 rgba(80,120,200,0.10);
+  padding: 32px 36px 24px 36px;
+  position: relative;
+  z-index: 2;
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  max-height: calc(100vh - 120px);
+}
+
+.blog-editor-title {
+  font-weight: 700;
+  font-size: 30px;
+  margin-bottom: 32px;
+  color: #1a2340;
+  letter-spacing: 2px;
+  text-align: center;
+  text-shadow: 0 2px 8px rgba(80,120,200,0.08);
 }
 
 .blog-editor-title-input {
   width: 100%;
-  margin-bottom: 16px;
-  padding: 8px;
+  font-size: 20px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 2px solid #bfc8da;
+  margin-bottom: 28px;
+  background: #f7faff;
+  outline: none;
+  box-sizing: border-box;
+  transition: border 0.2s;
+  color: #23272f;
+  font-weight: 500;
+}
+.blog-editor-title-input:focus {
+  border-color: #6a8cff;
+  background: #f0f6ff;
 }
 
 .blog-editor-cover-row {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 28px;
 }
 
 .blog-editor-cover-label {
-  margin-right: 8px;
+  font-weight: 500;
+  font-size: 16px;
+  margin-right: 16px;
+  min-width: 48px;
+  color: #23272f;
+}
+
+.blog-editor-cover-input {
+  display: inline-block;
+  font-size: 15px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1.5px solid #bfc8da;
+  padding: 6px;
+  transition: border 0.2s;
+}
+.blog-editor-cover-input:focus {
+  border-color: #6a8cff;
 }
 
 .blog-editor-cover-preview {
-  margin-top: 8px;
+  margin-left: 24px;
 }
 
 .blog-editor-cover-img {
-  max-width: 200px;
-  max-height: 120px;
-  border-radius: 6px;
-  border: 1px solid #444;
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px #bfc8da;
+  border: 2px solid #bfc8da;
+  background: #f4f7fb;
+  transition: box-shadow 0.2s, border 0.2s;
+}
+
+.blog-editor-md-row {
+  margin-bottom: 32px;
+  width: 100%;
+}
+
+.blog-editor-md-wrapper {
+  border: 2px solid #bfc8da;
+  border-radius: 14px;
+  background: #f7faff;
+  box-shadow: 0 2px 12px #e5e7eb;
+  padding: 0;
+  overflow: hidden;
+  min-height: 360px;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.blog-editor-md-editor {
+  border: none !important;
+  border-radius: 0 !important;
+  background: #f7faff !important;
+  color: #23272f !important;
+  min-height: 350px !important;
 }
 
 .blog-editor-submit-btn {
-  margin: 32px auto 0 auto;
-  display: block;
-  padding: 10px 40px;
-  font-size: 18px;
-  border-radius: 6px;
-  background: #222;
+  width: 140px;
+  height: 48px;
+  background: linear-gradient(90deg, #6a8cff 0%, #8fd3f4 100%);
   color: #fff;
+  font-weight: 600;
+  font-size: 20px;
   border: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px #bfc8da;
   cursor: pointer;
+  margin: 0 auto;
+  display: block;
+  letter-spacing: 2px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.blog-editor-submit-btn:hover {
+  background: linear-gradient(90deg, #5a7cff 0%, #7fc3e4 100%);
+  box-shadow: 0 6px 24px #8fd3f4;
+}
+
+.blog-editor-top-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 120px;
+  background: linear-gradient(180deg, rgba(227,232,240,0.95) 60%, rgba(227,232,240,0) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 强化 Markdown 编辑器内容区字体颜色 */
+.w-md-editor-content {
+  color: #23272f !important;
+  background: #f7faff !important;
+}
+
+.w-md-editor-bar {
+  background: #f0f4fa !important;
+}
+
+.w-md-editor-text {
+  color: #23272f !important;
+  background: #f7faff !important;
 }

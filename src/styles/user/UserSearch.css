@@ -1,0 +1,43 @@
+.user-search-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f0f4ff 0%, #eef6ea 100%);
+}
+.user-search-container {
+  max-width: 900px;
+  margin: 24px auto;
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(50,80,140,0.08);
+}
+.user-search-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.user-search-controls select,
+.user-search-controls input {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #d6dfe9;
+  font-size: 14px;
+}
+.user-search-controls button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #6a8cff;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.user-search-results { list-style: none; padding: 0; margin: 0; }
+.user-item { display:flex; align-items:center; gap:12px; padding:12px 8px; border-bottom:1px solid #f0f4fb; }
+.user-avatar { width:56px; height:56px; border-radius:50%; object-fit:cover; }
+.user-info { flex:1 }
+.user-nick { font-weight:600 }
+.user-username { color:#888; font-size:13px }
+.user-actions { display:flex; gap:8px }
+.btn { padding:6px 10px; background:#6a8cff; color:#fff; border-radius:6px; text-decoration:none }
+.btn.outline { background:transparent; color:#6a8cff; border:1px solid #d6dfe9 }
+.empty { padding:20px; color:#666; text-align:center }
