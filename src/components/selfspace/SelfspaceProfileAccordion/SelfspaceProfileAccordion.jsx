@@ -95,8 +95,9 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
       .then(res => {
         if (res.data && res.data.code === 200) {
           setEditMsg('保存成功');
-          // 保存成功后，刷新localStorage昵称并通知其他组件刷新
+          // 保存成功后，刷新localStorage昵称和性别，并通知其他组件刷新
           localStorage.setItem('nickname', profile.nickname || '');
+          localStorage.setItem('gender', profile.gender || '');
           window.dispatchEvent(new Event('auth-changed'));
         } else {
           setEditMsg(res.data?.msg || res.data?.message || '保存失败');
