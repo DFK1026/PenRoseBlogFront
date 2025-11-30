@@ -202,3 +202,31 @@
 .maid-widget.maid-collapsed { z-index: 10; }
 .maid-widget.maid-collapsed .maid-canvas-wrap,
 .maid-widget.maid-collapsed .maid-loading-overlay { opacity: 0; visibility: hidden; pointer-events: none; clip-path: inset(0 0 100% 0); transition: none; }
+
+/* AI 聊天面板样式 */
+.maid-ai-panel {
+	position: absolute;
+	right: calc(100% + 12px);
+	bottom: 0;
+	width: 320px;
+	max-width: 42vw;
+	height: 46vh;
+	background: rgba(255,255,255,0.9);
+	border: 1px solid rgba(208,215,222,0.9);
+	border-radius: 10px;
+	box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+	display: flex;
+	flex-direction: column;
+	z-index: 220;
+}
+.maid-ai-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 13px; }
+.maid-ai-messages { padding: 8px; overflow: auto; flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; }
+.maid-ai-msg { max-width: 86%; }
+.maid-ai-msg.user { align-self: flex-end; text-align: right; }
+.maid-ai-msg.assistant { align-self: flex-start; text-align: left; }
+.maid-ai-msg-text { padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px solid #e6eef6; font-size: 13px; color: #111827; }
+.maid-ai-msg.user .maid-ai-msg-text { background: #ebf8f5; border-color: #9fe3d2; }
+.maid-ai-input-row { display: flex; gap: 8px; padding: 8px; border-top: 1px solid rgba(0,0,0,0.04); }
+.maid-ai-input { flex: 1 1 auto; resize: none; padding: 8px; border-radius: 8px; border: 1px solid #d0d7de; font-size: 13px; }
+.maid-ai-error { padding: 6px 10px; color: #b42318; background: #fff5f5; border-top: 1px solid rgba(0,0,0,0.03); font-size: 12px; }
+.maid-ai-sending { font-size: 12px; color: #374151; margin-right: 8px; }

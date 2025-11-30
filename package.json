@@ -15,6 +15,7 @@
     "@mantine/rte": "^5.10.5",
     "@uiw/react-md-editor": "^4.0.8",
     "axios": "^1.13.1",
+    "highlight.js": "^11.11.1",
     "jwt-decode": "^4.0.0",
     "live2d-widget": "^3.1.4",
     "markdown-it": "^14.1.0",
@@ -22,9 +23,12 @@
     "pixi.js": "^6.5.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
     "react-mde": "^11.5.0",
     "react-quill": "^2.0.0",
     "react-router-dom": "^7.9.5",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "showdown": "^2.1.0"
   },
   "devDependencies": {

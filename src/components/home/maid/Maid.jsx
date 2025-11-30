@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { Application, Ticker } from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display/cubism4';
 import '../../../styles/home/maidstyle/Maid.css';
+import MaidAiChat from './MaidAiChat';
 
 Live2DModel.registerTicker(Ticker);
 
@@ -21,6 +22,8 @@ export default function Maid() {
 	const [userScale, setUserScale] = useState(1);
 	// 设置面板开关
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	// 是否打开 AI 聊天面板
+	const [aiOpen, setAiOpen] = useState(false);
 
 	// 运行时选择的表情（仅用于当前模型，点击即应用，不参与合成）
 	const [selectedExpression, setSelectedExpression] = useState('');
@@ -824,6 +827,11 @@ export default function Maid() {
 				</div>
 			)}
 
+
+			{/* AI 聊天面板（独立于表情/装扮面板） */}
+			{aiOpen && (
+				<MaidAiChat visible={aiOpen} onClose={() => setAiOpen(false)} />
+			)}
 			{/* 底部控制条：表情/装扮/动作/场景 + 展开/设置 */}
 			<div className="maid-controlbar">
 				{(() => {
@@ -850,6 +858,17 @@ export default function Maid() {
 					);
 				})()}
 				{/* 已移除独立“动作”控件与模型选择器；模型选择已移动到设置面板 */}
+				{/* AI 助手 按钮 */}
+				<button
+					className={`maid-iconbtn maid-btn${aiOpen ? ' maid-iconbtn-active' : ''}`}
+					onClick={() => { setAiOpen((v) => !v); setCollapsed(false); setSettingsOpen(false); setOpenPanel(''); }}
+					title="AI 助手"
+					aria-label="AI 助手"
+					aria-pressed={aiOpen}
+				>
+					<img src="/icons/maid/chat.svg" alt="AI 助手" />
+				</button>
+
 				<button
 					className={`maid-iconbtn maid-btn${settingsOpen ? ' maid-iconbtn-active' : ''}`}
 					onClick={toggleSettings}
