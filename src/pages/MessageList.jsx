@@ -40,6 +40,9 @@ export default function MessageList() {
                   />
                   <span className="message-list-nickname">{conv.nickname}</span>
                   <span className="message-list-lastmsg">{conv.lastMessage}</span>
+                  {conv.unreadCount > 0 && (
+                    <span className="message-badge">{conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>
+                  )}
                 </a>
               </li>
             ))

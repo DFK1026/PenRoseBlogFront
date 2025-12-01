@@ -305,3 +305,20 @@ html, body, #root {
   background: #1a2233;
   text-decoration: none;
 }
+.nav-message-cell { position: relative; }
+.nav-message-cell .nav-edit-blog-btn { position: relative; }
+.nav-badge{
+  position:absolute;
+  top: 18%;
+  right: 28%;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff4d4f;
+  color:#fff;
+  font-size:12px;
+  line-height:18px;
+  text-align:center;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.8);
+}

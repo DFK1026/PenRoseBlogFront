@@ -77,3 +77,29 @@
   color: #aaa;
   padding: 32px 0;
 }
+.message-list-linkbtn {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: #4c79ff;
+  color: #fff;
+  font-size: 12px;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.message-list-linkbtn:hover { background: #3b65e6; }
+.message-badge{
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.8);
+}

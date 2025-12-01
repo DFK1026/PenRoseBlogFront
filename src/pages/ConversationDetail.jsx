@@ -50,6 +50,15 @@ export default function ConversationDetail() {
   };
   useEffect(() => {
     if (!userId || !otherId) return;
+    // 标记此会话为已读（不需要等待结果）
+    fetch(`/api/messages/conversation/${otherId}/read`, {
+      method: 'POST',
+      headers: { 'X-User-Id': userId }
+    }).catch(() => {});
+  }, [userId, otherId]);
+
+  useEffect(() => {
+    if (!userId || !otherId) return;
     fetch(`/api/messages/conversation/${otherId}`, {
       headers: { 'X-User-Id': userId }
     })
