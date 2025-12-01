@@ -15,18 +15,81 @@
   flex-direction: column;
   min-height: 600px;
 }
+.conversation-detail-container.two-columns {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+}
+
+/* 左侧会话用户栏 */
+.conversation-sidebar {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(80,120,200,0.08);
+  padding: 12px 10px;
+  overflow-y: auto; /* 独立滚动 */
+  max-height: 70vh;
+}
+.conversation-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.conversation-sidebar-item:hover { background: rgba(191,200,218,0.18); }
+.conversation-sidebar-item.active { background: rgba(106,140,255,0.18); }
+.conversation-sidebar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(191,200,218,0.9);
+}
+.conversation-sidebar-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a3550;
+}
+
+/* 右侧会话栏：仅自身滚动，小滚轮 */
+.conversation-detail-list {
+  flex: 1;
+  overflow-y: auto;    /* 独立滚动 */
+  margin-bottom: 18px;
+  padding-right: 4px;
+  max-height: 70vh;    /* 与左侧统一高度 */
+}
+
+/* 小滚轮（WebKit 内核） */
+.conversation-detail-list::-webkit-scrollbar,
+.conversation-sidebar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.conversation-detail-list::-webkit-scrollbar-thumb,
+.conversation-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(42,53,80,0.3);
+  border-radius: 6px;
+}
+.conversation-detail-list::-webkit-scrollbar-track,
+.conversation-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 去掉顶部标题占位 */
+.conversation-detail-title { display: none; }
 .conversation-detail-title {
   font-size: 24px;
   font-weight: 700;
   color: #2a3550;
   margin-bottom: 18px;
   text-align: center;
-}
-.conversation-detail-list {
-  flex: 1;
-  overflow-y: auto;
-  margin-bottom: 18px;
-  padding-right: 4px;
 }
 .conversation-detail-msg {
   background: #f7faff;
@@ -79,6 +142,14 @@
   gap: 12px;
   margin-top: 8px;
 }
+.conversation-detail-container.two-columns .conversation-detail-form {
+  grid-column: 1 / -1;        /* 跨两列 */
+  display: grid;
+  grid-template-columns: 1fr auto; /* 输入为自适应，按钮为自宽 */
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
 .conversation-detail-input {
   flex: 1;
   padding: 10px 14px;
@@ -89,6 +160,9 @@
   color: #23272f;
   outline: none;
   transition: border 0.2s;
+  height: 40px;               /* 与按钮匹配的高度 */
+  line-height: 40px;
+  padding: 0 14px;
 }
 .conversation-detail-input:focus {
   border-color: #6a8cff;
@@ -104,7 +178,12 @@
   box-shadow: 0 2px 8px #bfc8da;
   cursor: pointer;
   transition: background 0.2s;
+  height: 40px;               /* 与输入框一致 */
+  padding: 0 14px;            /* 适配两字宽度 */
+  line-height: 40px;          /* 文本垂直居中 */
+  white-space: nowrap;
 }
 .conversation-detail-sendbtn:hover {
   background: linear-gradient(90deg, #5a7cff 0%, #7fc3e4 100%);
 }
+.clickable { cursor: pointer; }

@@ -1,16 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import BannerNavbar from '../components/common/BannerNavbar';
 import '../styles/message/ConversationDetail.css';
 
 export default function ConversationDetail() {
   const { otherId } = useParams();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [otherInfo, setOtherInfo] = useState({ nickname: '', avatarUrl: '' });
+  const [conversations, setConversations] = useState([]); // 左侧会话摘要列表
   const userId = localStorage.getItem('userId');
-  const messagesEndRef = useRef(null);
-  
+  const rightScrollRef = useRef(null);  // 右侧会话滚动容器
+  const leftScrollRef = useRef(null);   // 左侧列表滚动容器
+
   const mergeMessages = (oldList, newList) => {
     if ((!oldList || oldList.length === 0) && (!newList || newList.length === 0)) return [];
     const mergedArr = [];
@@ -48,6 +51,7 @@ export default function ConversationDetail() {
 
     return mergedArr;
   };
+  // 进入会话后标记已读
   useEffect(() => {
     if (!userId || !otherId) return;
     // 标记此会话为已读（不需要等待结果）
@@ -57,6 +61,7 @@ export default function ConversationDetail() {
     }).catch(() => {});
   }, [userId, otherId]);
 
+  // 加载右侧会话消息
   useEffect(() => {
     if (!userId || !otherId) return;
     fetch(`/api/messages/conversation/${otherId}`, {
@@ -68,61 +73,66 @@ export default function ConversationDetail() {
       });
   }, [userId, otherId]);
 
-  // derive other user's info from loaded messages
+  // 加载左侧会话摘要列表（含头像、昵称）
   useEffect(() => {
-    if (!messages || messages.length === 0) return;
-    const meId = Number(userId);
-    for (let m of messages) {
-      if (m.senderId !== meId) {
+    if (!userId) return;
+    fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
+      .then(r => r.json())
+      .then(j => {
+        if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
+          setConversations(j.data.list);
+        }
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  // 切换会话时清空旧消息，避免与上一位用户混杂
+  useEffect(() => { setMessages([]); }, [otherId]);
+
+  // 仅保留当前会话双方的消息
+  const meId = Number(userId || 0);
+  const oid = Number(otherId || 0);
+  const filteredMessages = React.useMemo(
+    () => (messages || []).filter(m =>
+      (m?.senderId === meId && m?.receiverId === oid) ||
+      (m?.senderId === oid && m?.receiverId === meId)
+    ),
+    [messages, meId, oid]
+  );
+
+  // 从消息推断对方信息
+  useEffect(() => {
+    if (!filteredMessages || filteredMessages.length === 0) return;
+    for (let m of filteredMessages) {
+      if (m.senderId !== Number(userId)) {
         setOtherInfo({ nickname: m.senderNickname || '', avatarUrl: m.senderAvatarUrl || '' });
         return;
       }
-      if (m.receiverId !== meId) {
+      if (m.receiverId !== Number(userId)) {
         setOtherInfo({ nickname: m.receiverNickname || '', avatarUrl: m.receiverAvatarUrl || '' });
         return;
       }
     }
-  }, [messages, userId]);
+  }, [filteredMessages, userId]);
 
-  // SSE 实时订阅（若服务器端拒绝或不支持，则回退为轮询）
+  // SSE/轮询更新（保留原逻辑）
   useEffect(() => {
     if (!otherId) return;
     let es;
     let pollTimer;
-    try {
-      es = new EventSource(`/api/messages/stream/${otherId}`);
-    } catch {
-      es = null;
-    }
+    try { es = new EventSource(`/api/messages/stream/${otherId}`); } catch { es = null; }
     let fallbackToPoll = false;
     if (es) {
       es.addEventListener('init', e => {
-        try {
-          const data = JSON.parse(e.data);
-          setMessages(prev => mergeMessages(prev, data || []));
-        } catch {
-          // ignore parse errors
-        }
+        try { const data = JSON.parse(e.data); setMessages(prev => mergeMessages(prev, data || [])); } catch {}
       });
       es.addEventListener('update', e => {
-        try {
-          const data = JSON.parse(e.data);
-          setMessages(prev => mergeMessages(prev, data || []));
-        } catch {
-          // ignore parse errors
-        }
+        try { const data = JSON.parse(e.data); setMessages(prev => mergeMessages(prev, data || [])); } catch {}
       });
-      es.addEventListener('error', () => {
-        // 服务端可能返回一个立即结束的 emitter（含 ApiResponse 错误）
-        fallbackToPoll = true;
-        if (es) { es.close(); es = null; }
-      });
-    } else {
-      fallbackToPoll = true;
-    }
+      es.addEventListener('error', () => { fallbackToPoll = true; if (es) { es.close(); es = null; } });
+    } else { fallbackToPoll = true; }
 
     if (fallbackToPoll) {
-      // 轮询每 4 秒
       const fn = () => {
         if (!userId) return;
         fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
@@ -132,16 +142,15 @@ export default function ConversationDetail() {
       fn();
       pollTimer = setInterval(fn, 4000);
     }
-
-    return () => {
-      if (es) es.close();
-      if (pollTimer) clearInterval(pollTimer);
-    };
+    return () => { if (es) es.close(); if (pollTimer) clearInterval(pollTimer); };
   }, [otherId, userId]);
 
+  // 仅让右侧会话容器自身滚动到底部（初始/更新时）
   useEffect(() => {
-    if (messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const el = rightScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [filteredMessages]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -169,20 +178,49 @@ export default function ConversationDetail() {
     }
   };
 
+  const gotoConversation = (id) => {
+    if (!id || String(id) === String(otherId)) return;
+    navigate(`/conversation/${id}`);
+  };
+  const openProfile = (uid) => {
+    if (!uid) return;
+    navigate(`/selfspace?userId=${uid}`);
+  };
+
   return (
     <div className="conversation-detail-page">
       <BannerNavbar />
-      {/* 顶部导航占位已由全局 `index.css` 的 `padding-top` 提供，无需额外占位元素 */}
-      <div className="conversation-detail-container">
-        <h2 className="conversation-detail-title">{otherInfo.nickname ? `与 ${otherInfo.nickname} 的会话` : '与Ta的会话'}</h2>
-        <div className="conversation-detail-list">
-          {messages.map(msg => (
+      <div className="conversation-detail-container two-columns">
+        {/* 左侧：会话用户栏（头像 + 昵称），可滚动 */}
+        <aside className="conversation-sidebar" ref={leftScrollRef} aria-label="会话列表">
+          {conversations.map(c => (
+            <button
+              key={c.otherId}
+              className={`conversation-sidebar-item${String(c.otherId) === String(otherId) ? ' active' : ''}`}
+              title={c.nickname || ''}
+              onClick={() => gotoConversation(c.otherId)}
+            >
+              <img
+                src={c.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
+                alt="avatar"
+                className="conversation-sidebar-avatar"
+                onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
+              />
+              <span className="conversation-sidebar-name">{c.nickname || `用户${c.otherId}`}</span>
+            </button>
+          ))}
+        </aside>
+
+        {/* 右侧：会话消息栏，仅自身滚动 */}
+        <div className="conversation-detail-list" ref={rightScrollRef}>
+          {filteredMessages.map(msg => (
             <div key={msg.id} className={`conversation-detail-msg${msg.senderId === Number(userId) ? ' self' : ''}`}>
               <div className="conversation-detail-msg-meta">
                 <img
                   src={msg.senderAvatarUrl || otherInfo.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
                   alt="avatar"
-                  className="conversation-detail-msg-avatar"
+                  className={`conversation-detail-msg-avatar${msg.senderId !== Number(userId) ? ' clickable' : ''}`}
+                  onClick={msg.senderId !== Number(userId) ? () => openProfile(msg.senderId) : undefined}
                   onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
                 />
                 <span className="conversation-detail-msg-nickname">{msg.senderNickname || (msg.senderId === Number(userId) ? '你' : otherInfo.nickname)}</span>
@@ -191,7 +229,6 @@ export default function ConversationDetail() {
               <div className="conversation-detail-msgtime">{new Date(msg.createdAt).toLocaleString()}</div>
             </div>
           ))}
-          <div ref={messagesEndRef} />
         </div>
         <form className="conversation-detail-form" onSubmit={handleSend}>
           <input

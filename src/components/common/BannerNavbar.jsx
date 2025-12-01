@@ -427,7 +427,7 @@ export default function BannerNavbar({ bannerId }) {
         </div>
         {/* 在 logo 右侧增加“查找好友”按钮（与私信/编辑按钮风格一致） */}
         <div className="nav-search-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-          <Link to="/users/search" className="nav-edit-blog-btn" style={{ margin: 0 }}>查找好友</Link>
+          <Link to="/users/search" className="nav-edit-blog-btn" style={{ margin: 0 }}>查找用户</Link>
         </div>
 
         {/* nav-inner 右侧仅保留编辑文章按钮和头像 */}

@@ -9,13 +9,33 @@ export default function FollowingList() {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
 
+  const buildHeaders = () => {
+    const h = {};
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    if (userId) h['X-User-Id'] = userId;
+    return h;
+  };
+
+  const handleUnfollow = async (targetId) => {
+    try {
+      const res = await fetch(`/api/follow/${targetId}`, { method: 'DELETE', headers: buildHeaders() });
+      let ok = res.ok, j = null;
+      try { j = await res.json(); ok = ok || (j && (j.code === 200 || j.status === 200)); } catch {}
+      if (ok) {
+        setList(prev => prev.filter(u => String(u.id) !== String(targetId)));
+      } else {
+        alert((j && (j.message || j.msg)) || '取消关注失败');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('网络错误');
+    }
+  };
+
   useEffect(() => {
     const fetchFollowing = async () => {
       try {
-        const headers = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        if (userId) headers['X-User-Id'] = userId;
-        const res = await fetch('/api/following', { headers });
+        const res = await fetch('/api/following', { headers: buildHeaders() });
         const j = await res.json();
         if (j && j.code === 200) {
           setList(j.data?.list || j.data || []);
@@ -43,13 +63,29 @@ export default function FollowingList() {
           <ul className="message-list-ul">
             {list.map(u => (
               <li key={u.id} className="message-list-item">
-                <img src={u.avatarUrl || '/imgs/loginandwelcomepanel/1.png'} alt="avatar" className="message-list-avatar" />
+                <Link to={`/selfspace?userId=${u.id}`} title="查看主页" style={{ display:'inline-block' }}>
+                  <img
+                    src={u.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
+                    alt="avatar"
+                    className="message-list-avatar clickable"
+                  />
+                </Link>
                 <div style={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div>
                     <div className="message-list-nickname">{u.nickname || u.username}</div>
                     <div style={{ color: '#666' }}>{u.bio || ''}</div>
                   </div>
-                  <Link to={`/conversation/${u.id}`} className="message-list-linkbtn">私信</Link>
+                  <div style={{display:'flex', gap:8}}>
+                    <button
+                      type="button"
+                      className="message-list-linkbtn"
+                      style={{ background:'#ffa940' }}  /* 橙色：取消关注 */
+                      onClick={() => handleUnfollow(u.id)}
+                    >
+                      取消关注
+                    </button>
+                    <Link to={`/conversation/${u.id}`} className="message-list-linkbtn">私信</Link>
+                  </div>
                 </div>
               </li>
             ))}
