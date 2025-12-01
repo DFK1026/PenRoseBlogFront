@@ -35,17 +35,21 @@
 .selfspace-left-panel-inner {
   width: 100%;
   height: 100%;
-  display: grid;
-  grid-template-rows: auto 1fr;  /* 信息条高度自适应，手风琴 1fr 填满 */
-  gap: 0;                         /* 信息条与手风琴贴紧 */
+  /* 用列方向的弹性布局替代 grid，避免只有一个子节点时高度不足的问题 */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 0; /* 信息条与手风琴贴紧 */
 }
 
 /* 手风琴容器填满左侧剩余空间，使第三块能顶到页面下方 */
 .selfspace-left-panel-inner .selfspace-profilepanel-container {
   display: block;
   width: 100%;
-  height: 100%;   /* 占满 grid 的第二行 */
-  min-height: 0;  /* 允许内部滚动 */
+  height: auto;
+  flex: 1;       /* 关键：无信息条时也能占满剩余高度 */
+  min-height: 0; /* 允许内部滚动 */
 }
 
 /* 右侧内容区：占据剩余空间 */
@@ -66,11 +70,11 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  margin: 0;                 /* 顶到横幅、与手风琴无缝连接 */
+  margin: 0;        /* 顶到横幅、与手风琴无缝连接 */
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(80,120,200,0.10);
-  position: sticky;
+  position: sticky; /* 仍保持吸顶 */
   top: 0;
   z-index: 2;
 }
