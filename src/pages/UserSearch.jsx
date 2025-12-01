@@ -6,7 +6,7 @@ import '../styles/user/UserSearch.css';
 import { Link } from 'react-router-dom';
 
 export default function UserSearch() {
-  const [mode, setMode] = useState('username');
+  const [mode, setMode] = useState('nickname'); // 默认优先按昵称搜索
   const [keyword, setKeyword] = useState('');
     const [results, setResults] = useState([]);
     const [error, setError] = useState(null);

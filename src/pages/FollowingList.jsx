@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import '../styles/message/MessageList.css';
+import BannerNavbar from '../components/common/BannerNavbar.jsx';
 
 export default function FollowingList() {
   const [list, setList] = useState([]);
@@ -29,25 +31,31 @@ export default function FollowingList() {
   }, [token, userId]);
 
   return (
-    <div className="message-list-container">
-      <h2 className="message-list-title">我的关注</h2>
-      {error ? (
-        <div className="message-list-empty" style={{color:'red'}}>{error}</div>
-      ) : list.length === 0 ? (
-        <div className="message-list-empty">暂无关注</div>
-      ) : (
-        <ul className="message-list-ul">
-          {list.map(u => (
-            <li key={u.id} className="message-list-item">
-              <img src={u.avatarUrl || '/imgs/loginandwelcomepanel/1.png'} alt="avatar" className="message-list-avatar" />
-              <div style={{ flex: 1 }}>
-                <div className="message-list-nickname">{u.nickname || u.username}</div>
-                <div style={{ color: '#666' }}>{u.bio || ''}</div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <>
+      <BannerNavbar />
+      <div className="message-list-container">
+        <h2 className="message-list-title">我的关注</h2>
+        {error ? (
+          <div className="message-list-empty" style={{color:'red'}}>{error}</div>
+        ) : list.length === 0 ? (
+          <div className="message-list-empty">暂无关注</div>
+        ) : (
+          <ul className="message-list-ul">
+            {list.map(u => (
+              <li key={u.id} className="message-list-item">
+                <img src={u.avatarUrl || '/imgs/loginandwelcomepanel/1.png'} alt="avatar" className="message-list-avatar" />
+                <div style={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div>
+                    <div className="message-list-nickname">{u.nickname || u.username}</div>
+                    <div style={{ color: '#666' }}>{u.bio || ''}</div>
+                  </div>
+                  <Link to={`/conversation/${u.id}`} className="message-list-linkbtn">私信</Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   );
 }

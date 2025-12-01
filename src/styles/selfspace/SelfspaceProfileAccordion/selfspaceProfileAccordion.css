@@ -121,3 +121,13 @@
 .editing .profilepanel-bg-preview .profilepanel-bg-video {
   box-shadow: 0 6px 18px rgba(0,0,0,0.08);
 }
+
+/* 仅当滚动型面板处于激活状态时，允许纵向滚动，避免内容被裁切 */
+.profilepanel-scroll-section.profilepanel-section-active {
+  overflow-y: auto;
+}
+
+/* 让滚动面板里的内容从顶部开始排布（覆盖基础居中样式） */
+.profilepanel-scroll-content {
+  align-items: flex-start;
+}

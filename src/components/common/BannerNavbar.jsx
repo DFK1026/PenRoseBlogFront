@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 
 export default function BannerNavbar({ bannerId }) {
   const { isLoggedIn } = useAuthState();
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
   const BASE_WIDTH = 1650;
   const [navHidden, setNavHidden] = useState(false);
   const [manifest, setManifest] = useState([]);
@@ -18,6 +19,7 @@ export default function BannerNavbar({ bannerId }) {
   const [layers, setLayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [unreadTotal, setUnreadTotal] = useState(0);
 
   const lastScrollRef = useRef(0);
   const prevHiddenRef = useRef(false);
@@ -346,6 +348,14 @@ export default function BannerNavbar({ bannerId }) {
     };
   }, [layers, isExample]);
 
+  useEffect(() => {
+    if (!userId) { setUnreadTotal(0); return; }
+    fetch('/api/messages/unread/total', { headers: { 'X-User-Id': userId } })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j && j.code === 200) setUnreadTotal(Number(j.data) || 0); })
+      .catch(() => {});
+  }, [userId]);
+
   const resolveSrc = (src) => {
     if (!src) return '';
   if (/^\.\/assets\//.test(src)) return src.replace(/^\.\/assets\//, '/banner/assets/');
@@ -430,6 +440,9 @@ export default function BannerNavbar({ bannerId }) {
           >
             私信
           </Link>
+          {unreadTotal > 0 && (
+            <span className="nav-badge">{unreadTotal > 99 ? '99+' : unreadTotal}</span>
+          )}
         </div>
         {/* nav-inner 右侧第7格：通知铃 与 编辑文章按钮并列 */}
         <div className="nav-edit-cell">
