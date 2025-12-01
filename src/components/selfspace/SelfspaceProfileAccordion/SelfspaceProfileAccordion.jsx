@@ -4,7 +4,7 @@ import resolveUrl from '../../../utils/resolveUrl';
 import '../../../styles/selfspace/SelfspaceProfileAccordion/selfspaceProfileAccordion.css';
 
 // 个人空间左侧手风琴面板
-export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHeight = '100%' }) {
+export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHeight = '100%', viewUserId = null, hideEditPanel = false }) {
   const [hoverIdx, setHoverIdx] = useState(0);
   const containerRef = useRef(null);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -44,7 +44,8 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
 
   const handleMouseLeave = () => { if (hoverIdx !== 3) setHoverIdx(0); };
 
-  const panels = [0, 1, 2, 3];
+  // 查看别人时不显示第4个“编辑资料”面板
+  const panels = hideEditPanel ? [0, 1, 2] : [0, 1, 2, 3];
 
   // 用户信息编辑相关状态
   const initialProfile = React.useMemo(() => ({
@@ -64,14 +65,26 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
   const [backgroundFile, setBackgroundFile] = useState(null);
   const [backgroundPreview, setBackgroundPreview] = useState('');
 
-  // userId & token
-  const rawUserId = localStorage.getItem('userId');
+  // userId & token（可由外部传入 viewUserId，用于查看别人）
+  const rawUserId = viewUserId != null ? String(viewUserId) : localStorage.getItem('userId');
   const token = localStorage.getItem('token');
   const userId = rawUserId && /^\d+$/.test(rawUserId) ? Number(rawUserId) : null;
 
+  // 查看别人主页：组件挂载/切换用户时直接拉取其资料用于展示（背景、头像、昵称等）
+  useEffect(() => {
+    if (!userId || !hideEditPanel) return;
+    axios.get(`/api/user/profile/${userId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+      .then(res => {
+        if (res?.data?.code === 200 && res.data.data) setProfile(res.data.data);
+      })
+      .catch(() => {});
+  }, [userId, hideEditPanel, token]);
+
   // 仅在第四个面板激活时加载用户信息
   useEffect(() => {
-    if (hoverIdx === 3) {
+    if (!hideEditPanel && hoverIdx === 3) {
       console.log('[ProfileAccordion] 加载用户信息 userId:', userId, 'token:', token);
       if (!userId || !token) {
         setEditMsg('用户信息无效，请重新登录');
@@ -99,7 +112,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
         })
         .finally(() => setEditLoading(false));
     }
-  }, [hoverIdx, userId, token, initialProfile]);
+  }, [hoverIdx, userId, token, initialProfile, hideEditPanel]);
 
   // 组件挂载时从 localStorage 初始化 profile（用于快速显示）
   useEffect(() => {
@@ -312,7 +325,7 @@ export default function SelfspaceProfileAccordion({ panelWidth = '100%', panelHe
           );
         }
 
-        // 第四个模块：用户信息编辑
+        // 第四个模块：用户信息编辑（仅本人可见）
         if (idx === 3) {
           return (
             <div

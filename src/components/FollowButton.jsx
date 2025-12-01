@@ -59,7 +59,7 @@ export default function FollowButton({ targetId, initialFollowing = null, onChan
 
   return (
     <button onClick={toggle} disabled={loading} className="follow-btn">
-      {isFollowing ? '已关注' : '关注'}
+      {isFollowing ? '取消关注' : '关注'}
     </button>
   );
 }

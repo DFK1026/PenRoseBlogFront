@@ -31,20 +31,21 @@
   height: 100vh; /* 占满整个视口高度 */
 }
 
-/* 左侧内部：放置 selfspaceProfileAccordion */
+/* 左侧内部：信息条在上，手风琴占满剩余高度 */
 .selfspace-left-panel-inner {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  display: grid;
+  grid-template-rows: auto 1fr;  /* 信息条高度自适应，手风琴 1fr 填满 */
+  gap: 0;                         /* 信息条与手风琴贴紧 */
 }
 
-/* 手风琴容器在左侧块内撑满即可 */
+/* 手风琴容器填满左侧剩余空间，使第三块能顶到页面下方 */
 .selfspace-left-panel-inner .selfspace-profilepanel-container {
   display: block;
   width: 100%;
-  height: 100%;
+  height: 100%;   /* 占满 grid 的第二行 */
+  min-height: 0;  /* 允许内部滚动 */
 }
 
 /* 右侧内容区：占据剩余空间 */
@@ -58,21 +59,33 @@
   padding: 24px;
   box-sizing: border-box;
 }
-/* 仅保留自空间基础布局 */
-  min-height: 100vh;
-  width: 100%;
+
+/* 新增：查看他人主页时，左侧手风琴上方的简要信息条 */
+.selfspace-user-brief {
   display: flex;
-  flex-direction: row;
-  position: relative;
-  background-color: #bebcbe;
-  box-sizing: border-box;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 0;                 /* 顶到横幅、与手风琴无缝连接 */
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(80,120,200,0.10);
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
-selfspace-page {
-  min-height: 100vh;
-  width: 100%;
-  display: flex;
-  flex-direction: row;
-  position: relative;
-  background-color: #bebcbe;
-  box-sizing: border-box;
+.selfspace-user-brief-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(191,200,218,0.6);
+}
+.selfspace-user-brief-info .nick {
+  font-weight: 700;
+  color: #2a3550;
+}
+.selfspace-user-brief-info .uname {
+  font-size: 12px;
+  color: #6b7280;
 }

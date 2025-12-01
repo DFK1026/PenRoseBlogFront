@@ -8,9 +8,55 @@ import { Link } from 'react-router-dom';
 export default function UserSearch() {
   const [mode, setMode] = useState('nickname'); // 默认优先按昵称搜索
   const [keyword, setKeyword] = useState('');
-    const [results, setResults] = useState([]);
-    const [error, setError] = useState(null);
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [followingIds, setFollowingIds] = useState(new Set());
+  const [friendIds, setFriendIds] = useState(new Set());
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
+
+  const buildHeaders = () => {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (userId) headers['X-User-Id'] = userId;
+    return headers;
+  };
+
+  // 统一尝试多个候选接口，取第一个返回成功的数据
+  const tryFetchFirst = async (candidates, pick) => {
+    for (const url of candidates) {
+      try {
+        const r = await fetch(url, { headers: buildHeaders() });
+        const j = await r.json();
+        if (j && (j.code === 200 || j.status === 200)) {
+          const ids = pick(j);
+          if (Array.isArray(ids)) return new Set(ids.map(x => Number(x)));
+        }
+      } catch {}
+    }
+    return new Set();
+  };
+
+  const refreshRelations = async () => {
+    // 关注集合
+    const following = await tryFetchFirst(
+      ['/api/follow/following', '/api/follow/list', '/api/follow/followingIds'],
+      (j) => Array.isArray(j.data) ? j.data
+        : (j.data && Array.isArray(j.data.list)) ? j.data.list.map(x => x.id || x.otherId) : []
+    );
+    setFollowingIds(following);
+    // 粉丝集合
+    const followers = await tryFetchFirst(
+      ['/api/follow/followers', '/api/follow/fans', '/api/follow/followerIds'],
+      (j) => Array.isArray(j.data) ? j.data
+        : (j.data && Array.isArray(j.data.list)) ? j.data.list.map(x => x.id || x.otherId) : []
+    );
+    // 互相关注=好友（前端计算交集）
+    const inter = new Set();
+    followers.forEach(id => { if (following.has(Number(id))) inter.add(Number(id)); });
+    setFriendIds(inter);
+  };
 
   const doSearch = async () => {
     if (!keyword.trim()) return;
@@ -22,6 +68,8 @@ export default function UserSearch() {
       const j = await res.json();
       if (j && j.code === 200 && j.data) {
         setResults(j.data.list || []);
+        // 搜索后刷新一次关系集合
+        refreshRelations();
       } else {
         setResults([]);
       }
@@ -53,7 +101,12 @@ export default function UserSearch() {
           ) : (
             results.map(u => (
               <li key={u.id} className="user-item">
-                <img src={u.avatarUrl || '/public/default-avatar.png'} alt="avatar" className="user-avatar" />
+                <img
+                  src={u.avatarUrl || '/public/default-avatar.png'}
+                  alt={u.nickname || u.username}
+                  title={u.nickname || u.username}
+                  className="user-avatar"
+                />
                 <div className="user-info">
                   <div className="user-nick">{u.nickname || u.username}</div>
                   <div className="user-username">@{u.username}</div>
@@ -61,8 +114,14 @@ export default function UserSearch() {
                 <div className="user-actions">
                   {String(u.id) !== String(localStorage.getItem('userId')) && (
                     <>
-                      <FriendRequestButton targetId={u.id} />
-                      <FollowButton targetId={u.id} />
+                      <FriendRequestButton
+                        targetId={u.id}
+                        initialFriend={friendIds.has(Number(u.id))}
+                      />
+                      <FollowButton
+                        targetId={u.id}
+                        initialFollowing={followingIds.has(Number(u.id))}
+                      />
                     </>
                   )}
                   <Link to={`/selfspace?userId=${u.id}`} className="btn outline">查看</Link>

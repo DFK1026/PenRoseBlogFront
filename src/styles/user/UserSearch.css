@@ -35,7 +35,7 @@
 .user-item { display:flex; align-items:center; gap:12px; padding:12px 8px; border-bottom:1px solid #f0f4fb; }
 .user-avatar { width:56px; height:56px; border-radius:50%; object-fit:cover; }
 .user-info { flex:1 }
-.user-nick { font-weight:600 }
+.user-nick { font-weight:600; color: #000; }
 .user-username { color:#888; font-size:13px }
 .user-actions { display:flex; gap:8px }
 .btn { padding:6px 10px; background:#6a8cff; color:#fff; border-radius:6px; text-decoration:none }
