@@ -145,7 +145,8 @@
 .conversation-detail-container.two-columns .conversation-detail-form {
   grid-column: 1 / -1;        /* 跨两列 */
   display: grid;
-  grid-template-columns: 1fr auto; /* 输入为自适应，按钮为自宽 */
+  /* 修改：容纳 输入框 + 图片 + 视频 + 发送 四列 */
+  grid-template-columns: 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   margin-top: 8px;
@@ -186,4 +187,81 @@
 .conversation-detail-sendbtn:hover {
   background: linear-gradient(90deg, #5a7cff 0%, #7fc3e4 100%);
 }
+.conversation-detail-uploadbtn {
+  padding: 0 12px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1.5px solid #bfc8da;
+  background: #f7faff;
+  color: #2a3550;
+  font-weight: 600;
+  cursor: pointer;
+}
+.conversation-detail-uploadbtn:hover {
+  background: #eef3ff;
+}
+.conversation-detail-uploadbtn:disabled,
+.conversation-detail-sendbtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.conversation-detail-uploadprogress {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.conversation-detail-uploadprogress .bar {
+  height: 6px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6a8cff, #8fd3f4);
+  transition: width 0.2s ease;
+}
+.conversation-detail-uploadprogress .pct {
+  font-size: 12px;
+  color: #2a3550;
+}
+
+/* 媒体消息样式 */
+.conversation-detail-msgmedia {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  display: block;
+}
 .clickable { cursor: pointer; }
+
+/* 撤回消息的样式 */
+.conversation-detail-msg.recalled {
+  background: #f0f2f7;
+  color: #666;
+  font-style: italic;
+}
+
+/* 右键菜单 */
+.msg-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #d0d7e2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  padding: 6px 0;
+  min-width: 140px;
+}
+.msg-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: #2a3550;
+}
+.msg-context-menu button:hover {
+  background: #eef3ff;
+}
