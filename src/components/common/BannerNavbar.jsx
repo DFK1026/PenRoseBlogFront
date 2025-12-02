@@ -377,16 +377,22 @@ export default function BannerNavbar({ bannerId }) {
       try {
         const data = JSON.parse(e.data);
         if (data && data.type === 'PRIVATE_MESSAGE') {
-          // 若正处于该会话页面，立即标记已读，确保无红点
+          // 若正处于该会话页面
           const m = (window.location.pathname || '').match(/\/conversation\/(\d+)/);
           const currentOtherId = m ? m[1] : null;
-          if (currentOtherId && String(currentOtherId) === String(data.senderId)) {
+          const isCurrentConv = currentOtherId && String(currentOtherId) === String(data.senderId);
+
+          if (isCurrentConv) {
+            // 仅标记已读，不立刻刷新未读总数，避免红点闪一下
             fetch(`/api/messages/conversation/${data.senderId}/read`, {
               method: 'POST', headers: { 'X-User-Id': userId }
             }).catch(() => {});
+          } else {
+            // 其他会话来消息：正常刷新未读总数
+            refreshUnreadTotal();
           }
-          // 刷新总未读；同时广播给其它页面（会话列表等）更新
-          refreshUnreadTotal();
+
+          // 广播给其它页面（会话列表/会话详情）更新
           try { window.dispatchEvent(new CustomEvent('pm-event', { detail: data })); } catch {}
         }
       } catch { /* ignore */ }

@@ -24,7 +24,10 @@ export default function ConversationDetail() {
   const [viewRecords, setViewRecords] = useState([]);
   // 右键菜单状态
   const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, msg: null });
-  const [inputHeight, setInputHeight] = useState(56); 
+  const [inputHeight, setInputHeight] = useState(() => {
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+    return Math.max(56, Math.round(vh * 0.15)); // 15vh
+  });
   const inputRef = useRef(null);
 
   const mergeMessages = (oldList, newList) => {
@@ -505,7 +508,10 @@ export default function ConversationDetail() {
   return (
     <div className="conversation-detail-page">
       <BannerNavbar />
-      <div className="conversation-detail-container two-columns">
+      <div
+        className="conversation-detail-container two-columns"
+        style={{ '--input-height': `${inputHeight}px` }}  // 让 CSS 使用当前高度
+      >
         {/* 左侧：会话用户栏（头像 + 昵称），可滚动 */}
         <aside className="conversation-sidebar" ref={leftScrollRef} aria-label="会话列表">
           {conversations.map(c => (

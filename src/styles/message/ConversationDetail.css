@@ -18,9 +18,13 @@
 .conversation-detail-container.two-columns {
   display: grid;
   grid-template-columns: 280px 1fr;
-  grid-template-rows: 1fr auto;   /* 上：列表  下：输入栏 */
+  /* 第一行最少 240px，防止被压扁；第二行为输入栏 */
+  grid-template-rows: minmax(240px, 1fr) auto;
   gap: 16px;
   align-items: stretch;
+  /* 保持与页面底部齐平：100vh 减去全局 body 的导航占位（15vh）及上下内边距(约32px，可按需微调) */
+  min-height: calc(100vh - 15vh - 50px);
+  height: calc(100vh - 15vh - 50px);
 }
 
 /* 左侧会话用户栏 */
@@ -88,10 +92,9 @@
   overflow-y: auto;
   margin-bottom: 18px;
   padding-right: 4px;
-  /* 高度上限（与之前视觉一致），并允许在网格里收缩 */
-  max-height: 72vh;
-  height: calc(74vh - var(--input-height) - 12px); /* 12px 为底部间距微调 */
-  overflow-y: auto;
+  /* 使用容器总高度减去输入区实际高度，保持底部齐平 */
+  height: calc(100% - var(--effective-input-height) - 12px);
+  max-height: none;
 }
 
 /* 小滚轮（WebKit 内核） */
@@ -172,12 +175,15 @@
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
-  align-items: end;
+  align-items: stretch;             /* 让输入容器可拉伸填满本行高度 */
   margin-top: 0;
 }
 
 /* 输入容器（与图示一致：浅灰描边圆角） */
 .conversation-inputbox {
+  /* 两行文本最小：输入框两行≈48px + 上下内边距 38px = 86px */
+  /* 最大高度略微加长（可自行再调，如 420px / 460px） */
+  --effective-input-height: clamp(86px, var(--input-height, 120px), 460px);
   display: flex;
   flex: 1;
   position: relative;
@@ -185,8 +191,12 @@
   border: 1px solid #e2e5ea;
   background: #fff;
   border-radius: 10px;
-  padding: 28px 12px 10px 12px; 
+  padding: 28px 12px 10px 12px;
   align-items: stretch;
+  box-sizing: border-box;
+  height: var(--effective-input-height);
+  min-height: 86px;
+  max-height: 460px;
 }
 
 /* 上边界线（可拖拽） */
@@ -232,18 +242,18 @@
 
 /* 多行输入框（容器内无边框，三行起步，可继续上拉） */
 .conversation-detail-input {
-  flex: 1;            
-  width: 100%;         
-  min-width: 0;      
-  display: block;     
-  height: auto;      
-  min-height: 0;       
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: calc(var(--effective-input-height) - 38px);
+  min-height: calc(86px - 38px);   /* 48px → 两行文字区 */
+  max-height: calc(460px - 38px);
   max-height: none;
   resize: none;
   overflow: auto;
   border: none;
-  outline: none;       
-  appearance: none;   
+  outline: none;
+  appearance: none;
   background: transparent;
   font-size: 15px;
   line-height: 20px;
