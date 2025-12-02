@@ -24,6 +24,8 @@ export default function ConversationDetail() {
   const [viewRecords, setViewRecords] = useState([]);
   // 右键菜单状态
   const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, msg: null });
+  const [inputHeight, setInputHeight] = useState(56); 
+  const inputRef = useRef(null);
 
   const mergeMessages = (oldList, newList) => {
     if ((!oldList || oldList.length === 0) && (!newList || newList.length === 0)) return [];
@@ -62,15 +64,24 @@ export default function ConversationDetail() {
 
     return mergedArr;
   };
-  // 进入会话后标记已读
-  useEffect(() => {
+  // 进入会话后标记已读（抽成函数，便于复用）
+  const markReadCurrent = React.useCallback(() => {
     if (!userId || !otherId) return;
-    // 标记此会话为已读（不需要等待结果）
     fetch(`/api/messages/conversation/${otherId}/read`, {
       method: 'POST',
       headers: { 'X-User-Id': userId }
-    }).catch(() => {});
+    })
+    .then(() => {
+      setConversations(prev =>
+        (prev || []).map(x => String(x.otherId) === String(otherId) ? { ...x, unreadCount: 0 } : x)
+      );
+      try { window.dispatchEvent(new Event('pm-unread-refresh')); } catch {}
+    })
+    .catch(() => {});
   }, [userId, otherId]);
+
+  // 进入会话时即刻标记已读
+  useEffect(() => { markReadCurrent(); }, [markReadCurrent]);
 
   // 加载右侧会话消息
   useEffect(() => {
@@ -85,17 +96,20 @@ export default function ConversationDetail() {
       });
   }, [userId, otherId]);
 
-  // 加载左侧会话摘要列表（含头像、昵称）
+  // 加载左侧会话摘要列表（含头像、昵称、未读数）
   useEffect(() => {
     if (!userId) return;
-    fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
-      .then(r => r.json())
-      .then(j => {
-        if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
-          setConversations(j.data.list);
-        }
-      })
-      .catch(() => {});
+    const loadList = () => {
+      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
+        .then(r => r.json())
+        .then(j => {
+          if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
+            setConversations(j.data.list);
+          }
+        })
+        .catch(() => {});
+    };
+    loadList();
   }, [userId]);
 
   // 新增：加载“视图”数据（过滤已删除 + 撤回信息）
@@ -147,6 +161,10 @@ export default function ConversationDetail() {
           };
       merged.__recalled = !!v.recalled;
       merged.__displayText = v.displayText || '';
+      if (merged.__recalled) {
+        merged.__originalText = (m && m.type === 'TEXT' && typeof m.text === 'string') ? m.text : '';
+        merged.__origType = m?.type;
+      }
       return merged;
     });
   }, [viewRecords, messagesById]);
@@ -171,29 +189,50 @@ export default function ConversationDetail() {
     if (!otherId) return;
     let es;
     let pollTimer;
+
     const loadConversation = () => {
       if (!userId) return;
       fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
         .then(r => r.json())
         .then(j => { if (j && j.code === 200 && j.data) setMessages(prev => mergeMessages(prev, j.data.list || [])); });
     };
+    const loadList = () => {
+      if (!userId) return;
+      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
+        .then(r => r.json())
+        .then(j => { if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) setConversations(j.data.list); })
+        .catch(() => {});
+    };
 
     try { es = new EventSource(`/api/messages/stream/${otherId}`); } catch { es = null; }
     let fallbackToPoll = false;
     if (es) {
-      const onAny = () => { loadConversation(); refreshView(); };
+      const onAny = () => {
+        loadConversation();
+        refreshView();
+        loadList();         
+        markReadCurrent();   
+      };
       es.addEventListener('init', onAny);
       es.addEventListener('update', onAny);
       es.addEventListener('error', () => { fallbackToPoll = true; if (es) { es.close(); es = null; } });
     } else { fallbackToPoll = true; }
 
     if (fallbackToPoll) {
-      const fn = () => { loadConversation(); refreshView(); };
+      const fn = () => {
+        loadConversation();
+        refreshView();
+        loadList();        
+        markReadCurrent();
+      };
       fn();
       pollTimer = setInterval(fn, 4000);
     }
-    return () => { if (es) es.close(); if (pollTimer) clearInterval(pollTimer); };
-  }, [otherId, userId, refreshView]);
+    return () => {
+      try { if (es) es.close(); } catch {}
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [otherId, userId, refreshView, markReadCurrent]);
 
   // 仅让右侧会话容器自身滚动到底部（初始/更新时）
   useEffect(() => {
@@ -218,8 +257,18 @@ export default function ConversationDetail() {
         setMessages(prev => mergeMessages(prev, [j.data]));
       }
     } catch {}
-    // 发送后刷新视图（权威状态）
     refreshView();
+  };
+
+  // 新增：在 textarea 中支持 Shift+Enter 换行、Enter 发送
+  const onInputKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      // 直接调用发送
+      const fakeEvent = { preventDefault: () => {} };
+      handleSend(fakeEvent);
+    }
+    // Shift+Enter 默认行为换行，无需特殊处理
   };
 
   // 新增：带进度的上传函数
@@ -289,6 +338,18 @@ export default function ConversationDetail() {
 
   const onPickImageClick = () => imageInputRef.current && imageInputRef.current.click();
   const onPickVideoClick = () => videoInputRef.current && videoInputRef.current.click();
+
+  const reEditMessage = (msg) => {
+    if (!msg || !msg.__originalText) return;
+    setText(msg.__originalText);
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const len = inputRef.current.value.length;
+        try { inputRef.current.setSelectionRange(len, len); } catch {}
+      }
+    });
+  };
 
   const gotoConversation = (id) => {
     if (!id || String(id) === String(otherId)) return;
@@ -380,6 +441,67 @@ export default function ConversationDetail() {
     }
   };
 
+  const startResize = (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = inputHeight;
+    const anchorMessagesBottom = () => {
+      const el = rightScrollRef.current;
+      if (!el) return;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight - el.clientHeight;
+      });
+    };
+    const onMove = (mv) => {
+      const delta = startY - mv.clientY; // 向上拖动增加高度
+      const newHeight = Math.min(240, Math.max(56, startHeight + delta));
+      if (newHeight !== inputHeight) {
+        setInputHeight(newHeight);
+        anchorMessagesBottom();
+      }
+    };
+    const onUp = () => {
+      anchorMessagesBottom();
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+// 监听全局私信事件（由 BannerNavbar 派发的 pm-event），即时刷新当前会话
+  useEffect(() => {
+    if (!userId) return;
+
+    const onPm = (ev) => {
+      const data = ev?.detail || {};
+      const me = Number(userId);
+      const partnerId = String(me === Number(data.receiverId) ? data.senderId : data.receiverId);
+
+
+      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
+        .then(r => r.json())
+        .then(j => {
+          if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
+            setConversations(j.data.list);
+          }
+        })
+        .catch(() => {});
+
+      if (String(partnerId) === String(otherId)) {
+        refreshView();
+        if (me === Number(data.receiverId)) markReadCurrent();
+        requestAnimationFrame(() => {
+          const el = rightScrollRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      }
+    };
+
+    window.addEventListener('pm-event', onPm);
+    return () => window.removeEventListener('pm-event', onPm);
+  }, [userId, otherId, refreshView, markReadCurrent]);
+
   return (
     <div className="conversation-detail-page">
       <BannerNavbar />
@@ -400,19 +522,61 @@ export default function ConversationDetail() {
                 onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
               />
               <span className="conversation-sidebar-name">{c.nickname || `用户${c.otherId}`}</span>
+              {c.unreadCount > 0 && (
+                <span className="conversation-sidebar-badge" title={`未读 ${c.unreadCount}`}>
+                  {c.unreadCount > 99 ? '99+' : c.unreadCount}
+                </span>
+              )}
             </button>
           ))}
         </aside>
 
         {/* 右侧：会话消息栏，仅自身滚动 */}
-        <div className="conversation-detail-list" ref={rightScrollRef}>
+        <div
+          className="conversation-detail-list"
+          ref={rightScrollRef}
+          style={{ '--input-height': inputHeight + 'px' }}  
+        >
           {finalMessages.map(msg => {
             const isSelf = msg.senderId === Number(userId);
             const recalled = !!msg.__recalled;
+
+            if (recalled) {
+              const canReEdit = isSelf && !!msg.__originalText;
+              const canDeleteRecall = isSelf;                      
+              return (
+                <div
+                  key={msg.id}
+                  className="conversation-detail-recall"
+                  onContextMenu={(e) => openContextMenu(e, msg)}
+                >
+                  <span className="txt">{msg.__displayText || '消息已撤回'}</span>
+                  {canReEdit && (
+                    <button
+                      type="button"
+                      className="reedit"
+                      onClick={(e) => { e.stopPropagation(); reEditMessage(msg); }}
+                    >
+                      重新编辑
+                    </button>
+                  )}
+                  {canDeleteRecall && (
+                    <button
+                      type="button"
+                      className="recall-close"
+                      onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <div
                 key={msg.id}
-                className={`conversation-detail-msg${isSelf ? ' self' : ''}${recalled ? ' recalled' : ''}`}
+                className={`conversation-detail-msg${isSelf ? ' self' : ''}`}
                 onContextMenu={(e) => openContextMenu(e, msg)}
                 title="右键可撤回/删除"
               >
@@ -421,6 +585,7 @@ export default function ConversationDetail() {
                     src={msg.senderAvatarUrl || otherInfo.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
                     alt="avatar"
                     className={`conversation-detail-msg-avatar${!isSelf ? ' clickable' : ''}`}
+                    title={!isSelf ? '查看主页' : undefined}   // ← 新增：悬停提示
                     onClick={!isSelf ? () => openProfile(msg.senderId) : undefined}
                     onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
                   />
@@ -430,29 +595,24 @@ export default function ConversationDetail() {
                 </div>
 
                 <div className="conversation-detail-msgtext">
-                  {recalled ? (
-                    msg.__displayText || '消息已撤回'
+                  {msg?.type === 'IMAGE' && msg?.mediaUrl ? (
+                    <img
+                      className="conversation-detail-msgmedia"
+                      src={toAbsUrl(msg.mediaUrl)}
+                      alt="image"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const a = document.createElement('a');
+                        a.href = toAbsUrl(msg.mediaUrl);
+                        a.textContent = '[图片加载失败，点击打开]';
+                        a.target = '_blank';
+                        e.currentTarget.parentElement?.appendChild(a);
+                      }}
+                    />
+                  ) : msg?.type === 'VIDEO' && msg?.mediaUrl ? (
+                    <video className="conversation-detail-msgmedia" src={toAbsUrl(msg.mediaUrl)} controls />
                   ) : (
-                    // 原有媒体/文本渲染
-                    msg?.type === 'IMAGE' && msg?.mediaUrl ? (
-                      <img
-                        className="conversation-detail-msgmedia"
-                        src={toAbsUrl(msg.mediaUrl)}
-                        alt="image"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          const a = document.createElement('a');
-                          a.href = toAbsUrl(msg.mediaUrl);
-                          a.textContent = '[图片加载失败，点击打开]';
-                          a.target = '_blank';
-                          e.currentTarget.parentElement?.appendChild(a);
-                        }}
-                      />
-                    ) : msg?.type === 'VIDEO' && msg?.mediaUrl ? (
-                      <video className="conversation-detail-msgmedia" src={toAbsUrl(msg.mediaUrl)} controls />
-                    ) : (
-                      msg?.text || ''
-                    )
+                    msg?.text || ''
                   )}
                 </div>
 
@@ -464,42 +624,45 @@ export default function ConversationDetail() {
           })}
         </div>
 
-        {/* 表单：增加图片/视频上传按钮和隐藏的文件选择器 */}
-        <form className="conversation-detail-form" onSubmit={handleSend}>
-          <input
-            type="text"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            placeholder="输入消息..."
-            className="conversation-detail-input"
-            autoFocus
-            disabled={uploading}
-          />
+        {/* 表单：输入栏新结构（图标 + 可拉伸 textarea + 发送按钮） */}
+        <form
+          className="conversation-detail-form"
+          onSubmit={handleSend}
+          style={{ '--input-height': inputHeight + 'px' }}   
+        >
+          <div className="conversation-inputbox">
+            <div
+              className="conversation-inputbox-resize"
+              title="拖动上边界可加长输入框"
+              onMouseDown={startResize}
+            ></div>
 
-          {/* 新增：上传图片 */}
-          <button
-            type="button"
-            className="conversation-detail-uploadbtn"
-            onClick={onPickImageClick}
-            disabled={uploading}
-            title="上传图片"
-          >
-            图片
-          </button>
+            <button
+              type="button"
+              className="icon-btn icon-image"
+              onClick={onPickImageClick}
+              title="发送图片"
+              disabled={uploading}
+            ></button>
+            <button
+              type="button"
+              className="icon-btn icon-video"
+              onClick={onPickVideoClick}
+              title="发送视频"
+              disabled={uploading}
+            ></button>
 
-          {/* 新增：上传视频 */}
-          <button
-            type="button"
-            className="conversation-detail-uploadbtn"
-            onClick={onPickVideoClick}
-            disabled={uploading}
-            title="上传视频"
-          >
-            视频
-          </button>
-
+            <textarea
+              ref={inputRef}            
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={onInputKeyDown}
+              placeholder="请输入消息内容..."
+              className="conversation-detail-input"
+              disabled={uploading}
+            />
+          </div>
           <button type="submit" className="conversation-detail-sendbtn" disabled={uploading}>发送</button>
-
           {/* 隐藏文件输入框 */}
           <input
             ref={imageInputRef}
@@ -517,7 +680,7 @@ export default function ConversationDetail() {
           />
         </form>
 
-        {/* 新增：上传进度条 */}
+        {/* 上传进度条 */}
         {uploading && (
           <div className="conversation-detail-uploadprogress" aria-live="polite">
             <div className="bar" style={{ width: `${uploadProgress}%` }} />
@@ -529,7 +692,10 @@ export default function ConversationDetail() {
       {/* 右键菜单 */}
       {menu.visible && menu.msg && (
         <div className="msg-context-menu" style={{ left: menu.x, top: menu.y }}>
-          {menu.msg.senderId === Number(userId) && !menu.msg.__recalled && (
+          {(menu.msg.senderId === Number(userId))
+            && !menu.msg.__recalled
+            && Number.isFinite(new Date(menu.msg.createdAt).getTime())
+            && (Date.now() - new Date(menu.msg.createdAt).getTime() <= 2 * 60 * 1000) && (
             <button onClick={() => recallMessage(menu.msg.id)}>撤回</button>
           )}
           <button onClick={() => deleteMessage(menu.msg.id)}>删除</button>
