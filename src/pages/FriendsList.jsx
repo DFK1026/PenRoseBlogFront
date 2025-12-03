@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '../styles/message/MessageList.css';
 import BannerNavbar from '../components/common/BannerNavbar.jsx';
 
@@ -8,6 +8,7 @@ export default function FriendsList() {
   const [error, setError] = useState(null);
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
+  const navigate = useNavigate();
 
   const buildHeaders = () => {
     const h = {};
@@ -31,6 +32,16 @@ export default function FriendsList() {
       console.error(e);
       alert('网络错误');
     }
+  };
+
+  // 新增：进入会话后自动刷新一次，确保布局正常
+  const gotoConversationWithRefresh = (id) => {
+    if (!id) return;
+    navigate(`/conversation/${id}`);
+    // 让路由渲染完成后刷新
+    setTimeout(() => {
+      try { window.location.reload(); } catch {}
+    }, 0);
   };
 
   useEffect(() => {
@@ -85,7 +96,14 @@ export default function FriendsList() {
                     >
                       删除好友
                     </button>
-                    <Link to={`/conversation/${u.id}`} className="message-list-linkbtn">私信</Link>
+                    {/* 原 Link 改为按钮，点击后跳转并刷新一次 */}
+                    <button
+                      type="button"
+                      className="message-list-linkbtn"
+                      onClick={() => gotoConversationWithRefresh(u.id)}
+                    >
+                      私信
+                    </button>
                   </div>
                 </div>
               </li>

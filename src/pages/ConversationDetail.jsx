@@ -102,18 +102,71 @@ export default function ConversationDetail() {
   // 加载左侧会话摘要列表（含头像、昵称、未读数）
   useEffect(() => {
     if (!userId) return;
-    const loadList = () => {
-      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
-        .then(r => r.json())
-        .then(j => {
-          if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
-            setConversations(j.data.list);
+    const loadList = async () => {
+      try {
+        const r = await fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } });
+        const j = await r.json();
+        if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
+          let list = j.data.list;
+
+          // 若当前会话对象不在列表中，补一条占位项（无消息也显示）
+          const exists = list.some(x => String(x.otherId) === String(otherId));
+          if (!exists && otherId) {
+            // 尝试获取真实昵称与头像
+            let profileNick = '';
+            let profileAvatar = '';
+            try {
+              const pr = await fetch(`/api/user/profile/${otherId}`);
+              const pj = await pr.json();
+              if (pj && pj.code === 200 && pj.data) {
+                profileNick = pj.data.nickname || '';
+                profileAvatar = pj.data.avatarUrl || '';
+              }
+            } catch {/* ignore */}
+
+            list = [
+              {
+                otherId: Number(otherId),
+                nickname: profileNick || otherInfo?.nickname || '',
+                avatarUrl: profileAvatar || otherInfo?.avatarUrl || '',
+                lastMessage: '',
+                lastAt: null,
+                unreadCount: 0
+              },
+              ...list
+            ];
           }
-        })
-        .catch(() => {});
+
+          // 如果接口返回的该用户条目缺少昵称/头像，也用 profile 补齐
+          list = await Promise.all(list.map(async (x) => {
+            if (!x || String(x.otherId) !== String(otherId)) return x;
+            if (x.nickname && x.avatarUrl) return x;
+            try {
+              const pr = await fetch(`/api/user/profile/${x.otherId}`);
+              const pj = await pr.json();
+              if (pj && pj.code === 200 && pj.data) {
+                return {
+                  ...x,
+                  nickname: x.nickname || pj.data.nickname || '',
+                  avatarUrl: x.avatarUrl || pj.data.avatarUrl || ''
+                };
+              }
+            } catch {/* ignore */}
+            return {
+              ...x,
+              nickname: x.nickname || otherInfo?.nickname || '',
+              avatarUrl: x.avatarUrl || otherInfo?.avatarUrl || ''
+            };
+          }));
+
+          setConversations(list);
+        }
+      } catch (e) {
+        // ignore
+      }
     };
     loadList();
-  }, [userId]);
+  }, [userId, otherId, otherInfo]);
 
   // 新增：加载“视图”数据（过滤已删除 + 撤回信息）
   const refreshView = React.useCallback(() => {

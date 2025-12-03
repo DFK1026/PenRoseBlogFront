@@ -27,6 +27,12 @@
   height: calc(100vh - 15vh - 50px);
 }
 
+/* 横幅收起时，容器占满视口高度，底边与页面齐平 */
+.banner-is-hidden .conversation-detail-container.two-columns {
+  min-height: calc(100vh - 50px);
+  height: calc(100vh - 50px);
+}
+
 /* 左侧会话用户栏 */
 .conversation-sidebar {
   grid-column: 1;
