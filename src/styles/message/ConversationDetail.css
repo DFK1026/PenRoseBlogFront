@@ -18,11 +18,11 @@
 .conversation-detail-container.two-columns {
   display: grid;
   grid-template-columns: 280px 1fr;
-  /* 第一行最少 240px，防止被压扁；第二行为输入栏 */
   grid-template-rows: minmax(240px, 1fr) auto;
-  gap: 16px;
+  /* 原来是 gap: 16px; 会产生“行间距”导致上下不贴合 */
+  column-gap: 16px;
+  row-gap: 0;
   align-items: stretch;
-  /* 保持与页面底部齐平：100vh 减去全局 body 的导航占位（15vh）及上下内边距(约32px，可按需微调) */
   min-height: calc(100vh - 15vh - 50px);
   height: calc(100vh - 15vh - 50px);
 }
@@ -96,10 +96,11 @@
   grid-column: 2;
   grid-row: 1;
   overflow-y: auto;
-  margin-bottom: 18px;
+  /* 去掉额外底部外边距，防止与输入栏之间出现空白 */
+  margin-bottom: 0;
   padding-right: 4px;
-  /* 使用容器总高度减去输入区实际高度，保持底部齐平 */
-  height: calc(100% - var(--effective-input-height) - 12px);
+  /* 改为撑满第1行高度，避免高度计算误差 */
+  height: 100%;
   max-height: none;
 }
 

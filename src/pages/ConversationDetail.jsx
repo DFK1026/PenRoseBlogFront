@@ -294,8 +294,73 @@ export default function ConversationDetail() {
   useEffect(() => {
     const el = rightScrollRef.current;
     if (!el) return;
+    // 基础滚到底
     el.scrollTop = el.scrollHeight;
+
+    // 监听媒体加载完成后再次滚到底（避免图片/视频异步加载改变高度）
+    const imgs = Array.from(el.querySelectorAll('img.conversation-detail-msgmedia'));
+    const vids = Array.from(el.querySelectorAll('video.conversation-detail-msgmedia'));
+    const onLoaded = () => {
+      try {
+        el.scrollTop = el.scrollHeight;
+      } catch {}
+    };
+    imgs.forEach(img => {
+      if (!img) return;
+      if (img.complete) {
+        // 已完成加载，直接滚一次
+        onLoaded();
+      } else {
+        img.addEventListener('load', onLoaded, { once: true });
+        img.addEventListener('error', onLoaded, { once: true });
+      }
+    });
+    vids.forEach(v => {
+      if (!v) return;
+      if (v.readyState >= 2) {
+        onLoaded();
+      } else {
+        v.addEventListener('loadeddata', onLoaded, { once: true });
+        v.addEventListener('error', onLoaded, { once: true });
+      }
+    });
+
+    // 清理事件监听（避免内存泄漏）
+    return () => {
+      imgs.forEach(img => {
+        try {
+          img.removeEventListener('load', onLoaded);
+          img.removeEventListener('error', onLoaded);
+        } catch {}
+      });
+      vids.forEach(v => {
+        try {
+          v.removeEventListener('loadeddata', onLoaded);
+          v.removeEventListener('error', onLoaded);
+        } catch {}
+      });
+    };
   }, [finalMessages]);
+
+  // 切换会话后，等待一帧再滚到底，确保 DOM 更新完成
+  useEffect(() => {
+    const el = rightScrollRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      try { el.scrollTop = el.scrollHeight; } catch {}
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [otherId]);
+
+  // 视图刷新完成后也滚到底（收到新消息或SSE触发时）
+  useEffect(() => {
+    const el = rightScrollRef.current;
+    if (!el) return;
+    const timer = setTimeout(() => {
+      try { el.scrollTop = el.scrollHeight; } catch {}
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [viewRecords]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -362,33 +427,87 @@ export default function ConversationDetail() {
   // 新增：选择文件并上传后发送媒体消息
   const handleFileChosen = async (e, type) => {
     const file = e.target.files && e.target.files[0];
-    // 允许重复选择同一文件
     e.target.value = '';
     if (!file) return;
+
+    setUploading(true);
+    setUploadProgress(0);
     try {
-      setUploading(true);
-      setUploadProgress(0);
+      // 1) 上传文件，得到后端可访问的 URL
       const url = await uploadFile(file);
+
+      // 2) 发送媒体消息
       const body = { type, mediaUrl: url, text: '' };
       const res = await fetch(`/api/messages/media/${otherId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
         body: JSON.stringify(body)
       });
-      const j = await res.json();
+
+      const j = await res.json().catch(() => null);
       if (j && j.code === 200 && j.data) {
-        setMessages(prev => mergeMessages(prev, [j.data]));
+        const dto = j.data;
+
+        // 立即合并到详细 messages，避免“发送端不显示”
+        setMessages(prev => {
+          const next = Array.isArray(prev) ? prev.slice() : [];
+          next.push({
+            id: dto.id,
+            senderId: dto.senderId,
+            receiverId: dto.receiverId,
+            text: dto.text || '',
+            mediaUrl: dto.mediaUrl || '',
+            type: dto.type || type,
+            createdAt: dto.createdAt,
+            senderNickname: dto.senderNickname || '你',
+            senderAvatarUrl: dto.senderAvatarUrl || (otherInfo?.avatarUrl || ''),
+            receiverNickname: dto.receiverNickname || otherInfo?.nickname || '',
+            receiverAvatarUrl: dto.receiverAvatarUrl || (otherInfo?.avatarUrl || '')
+          });
+          // 按时间排序，确保位置正确
+          next.sort((a, b) => {
+            const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return ta - tb;
+          });
+          return next;
+        });
+
+        // 立即为视图追加占位记录，避免接收端首次渲染为空白
+        setViewRecords(prev => {
+          const next = Array.isArray(prev) ? prev.slice() : [];
+          next.push({
+            id: dto.id,
+            senderId: dto.senderId,
+            receiverId: dto.receiverId,
+            createdAt: dto.createdAt,
+            recalled: false,
+            displayText: dto.text || ''
+          });
+          next.sort((a, b) => {
+            const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return ta - tb;
+          });
+          return next;
+        });
+
+        // 滚动到底部
+        requestAnimationFrame(() => {
+          const el = rightScrollRef.current;
+          if (el) el.scrollTop = el.scrollHeight;
+        });
       } else {
-        // 失败则刷新会话
-        fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
-          .then(r => r.json())
-          .then(j2 => { if (j2 && j2.code === 200 && j2.data) setMessages(prev => mergeMessages(prev, j2.data.list || [])); });
+        alert((j && (j.message || j.msg)) || '发送失败');
       }
     } catch (err) {
-      window.alert(err?.message || '上传失败');
+      console.error(err);
+      alert('上传或发送失败');
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      // 保险：再拉一次视图，确保双方一致
+      refreshView();
     }
   };
 
@@ -534,23 +653,29 @@ export default function ConversationDetail() {
       const me = Number(userId);
       const partnerId = String(me === Number(data.receiverId) ? data.senderId : data.receiverId);
 
-
+      // 无论来自谁，都刷新左侧列表（红点等）
       fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
         .then(r => r.json())
-        .then(j => {
-          if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
-            setConversations(j.data.list);
-          }
-        })
+        .then(j => { if (j && j.code === 200 && j.data?.list) setConversations(j.data.list); })
         .catch(() => {});
 
+      // 当前会话：刷新视图 + 拉详细消息，避免接收端“空白来信”
       if (String(partnerId) === String(otherId)) {
         refreshView();
-        if (me === Number(data.receiverId)) markReadCurrent();
-        requestAnimationFrame(() => {
-          const el = rightScrollRef.current;
-          if (el) el.scrollTop = el.scrollHeight;
-        });
+        fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
+          .then(r => r.json())
+          .then(j => {
+            if (j && j.code === 200 && j.data?.list) {
+              setMessages(prev => mergeMessages(prev, j.data.list));
+              requestAnimationFrame(() => {
+                const el = rightScrollRef.current;
+                if (el) el.scrollTop = el.scrollHeight;
+              });
+            }
+          })
+          .catch(() => {});
+        // 我在此会话，立刻清零未读
+        markReadCurrent();
       }
     };
 
@@ -659,19 +784,12 @@ export default function ConversationDetail() {
                       className="conversation-detail-msgmedia"
                       src={toAbsUrl(msg.mediaUrl)}
                       alt="image"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const a = document.createElement('a');
-                        a.href = toAbsUrl(msg.mediaUrl);
-                        a.textContent = '[图片加载失败，点击打开]';
-                        a.target = '_blank';
-                        e.currentTarget.parentElement?.appendChild(a);
-                      }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = ''; }}
                     />
                   ) : msg?.type === 'VIDEO' && msg?.mediaUrl ? (
                     <video className="conversation-detail-msgmedia" src={toAbsUrl(msg.mediaUrl)} controls />
                   ) : (
-                    msg?.text || ''
+                    msg?.text || (msg?.type === 'IMAGE' ? '[图片]' : msg?.type === 'VIDEO' ? '[视频]' : '')
                   )}
                 </div>
 
