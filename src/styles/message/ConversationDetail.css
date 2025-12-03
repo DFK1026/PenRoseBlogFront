@@ -140,6 +140,10 @@
   word-break: break-all;
   position: relative;
 }
+.conversation-detail-msgtext {
+  white-space: pre-wrap;   /* 保留换行和空白 */
+  word-break: break-word;  /* 长词换行 */
+}
 .conversation-detail-msg-meta {
   display: flex;
   align-items: center;
