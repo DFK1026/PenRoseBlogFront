@@ -11,7 +11,14 @@ export default function ConversationDetail() {
   const [otherInfo, setOtherInfo] = useState({ nickname: '', avatarUrl: '' });
   const [conversations, setConversations] = useState([]); // 左侧会话摘要列表
   const userId = localStorage.getItem('userId');
-  const rightScrollRef = useRef(null);  // 右侧会话滚动容器
+  const rightScrollRef = useRef(null);
+  // 新增：滚动相关状态
+  const userScrollingUpRef = useRef(false);
+  const autoScrollEnabledRef = useRef(true);
+  const isNearBottom = (el, thresh = 40) => {
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= thresh;
+  };
   const leftScrollRef = useRef(null);   // 左侧列表滚动容器
 
   // 新增：上传相关状态与 ref
@@ -251,105 +258,90 @@ export default function ConversationDetail() {
     }
   }, [finalMessages, userId]);
 
+  // 监听右侧消息栏滚动，用户上滑时禁用自动滚动
+  useEffect(() => {
+    const el = rightScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      // 用户只要不是接近底部，就认为在上滑查看历史
+      const near = isNearBottom(el);
+      userScrollingUpRef.current = !near;
+      autoScrollEnabledRef.current = near;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    // 初始设为是否在底部
+    autoScrollEnabledRef.current = isNearBottom(el);
+    userScrollingUpRef.current = !autoScrollEnabledRef.current;
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // 新增：右下角“新消息”提示状态 & 最近已看到的最大时间
+  const [newTip, setNewTip] = useState({ visible: false, count: 0 });
+  const lastSeenMaxTimeRef = useRef(0);
+  // 新增：已看到的消息ID集合（更可靠的计数依据）
+  const seenIdsRef = useRef(new Set());
+
   // SSE/轮询更新：收到任何事件后只触发刷新，避免与视图不一致
   useEffect(() => {
-    if (!otherId) return;
-    let es;
-    let pollTimer;
+    if (!otherId || !userId) return;
+    let es = null;
+    let pollTimer = null;
+    const subscribeUrl = `/api/messages/subscribe/${otherId}?userId=${encodeURIComponent(userId)}&_=${Date.now()}`;
+    try { es = new EventSource(subscribeUrl); } catch { es = null; }
 
-    const loadConversation = () => {
-      if (!userId) return;
-      fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
-        .then(r => r.json())
-        .then(j => { if (j && j.code === 200 && j.data) setMessages(prev => mergeMessages(prev, j.data.list || [])); });
-    };
-    const loadList = () => {
-      if (!userId) return;
-      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
-        .then(r => r.json())
-        .then(j => { if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) setConversations(j.data.list); })
-        .catch(() => {});
+    const onAny = () => {
+      // 收到更新时不改动 autoScrollEnabledRef，让用户上滑时不弹回底部
+      refreshView();
+      try { window.dispatchEvent(new Event('pm-unread-refresh')); } catch {}
     };
 
-    try { es = new EventSource(`/api/messages/stream/${otherId}`); } catch { es = null; }
-    let fallbackToPoll = false;
     if (es) {
-      const onAny = () => {
-        loadConversation();
-        refreshView();
-        loadList();         
-        markReadCurrent();   
-      };
       es.addEventListener('init', onAny);
       es.addEventListener('update', onAny);
-      es.addEventListener('error', () => { fallbackToPoll = true; if (es) { es.close(); es = null; } });
-    } else { fallbackToPoll = true; }
-
-    if (fallbackToPoll) {
-      const fn = () => {
-        loadConversation();
-        refreshView();
-        loadList();        
-        markReadCurrent();
+      es.onerror = () => {
+        if (es) { try { es.close(); } catch {} es = null; }
+        pollTimer = setInterval(() => { refreshView(); }, 3000);
       };
-      fn();
-      pollTimer = setInterval(fn, 4000);
+    } else {
+      pollTimer = setInterval(() => { refreshView(); }, 3000);
     }
+
+    // 初始刷新一次，但不强制滚到底
+    refreshView();
+
     return () => {
-      try { if (es) es.close(); } catch {}
+      if (es) {
+        try {
+          es.removeEventListener('init', onAny);
+          es.removeEventListener('update', onAny);
+          es.close();
+        } catch {}
+      }
       if (pollTimer) clearInterval(pollTimer);
     };
-  }, [otherId, userId, refreshView, markReadCurrent]);
+  }, [otherId, userId, refreshView]);
 
   // 仅让右侧会话容器自身滚动到底部（初始/更新时）
   useEffect(() => {
     const el = rightScrollRef.current;
     if (!el) return;
-    // 基础滚到底
-    el.scrollTop = el.scrollHeight;
-
-    // 监听媒体加载完成后再次滚到底（避免图片/视频异步加载改变高度）
+    // 仅在接近底部或允许自动滚动时滚到底，避免用户上滑时弹回
+    if (autoScrollEnabledRef.current || isNearBottom(el)) {
+      el.scrollTop = el.scrollHeight;
+    }
+    // 媒体加载完成后再尝试滚到底（同样受 autoScroll 控制）
     const imgs = Array.from(el.querySelectorAll('img.conversation-detail-msgmedia'));
     const vids = Array.from(el.querySelectorAll('video.conversation-detail-msgmedia'));
     const onLoaded = () => {
-      try {
+      if (autoScrollEnabledRef.current || isNearBottom(el)) {
         el.scrollTop = el.scrollHeight;
-      } catch {}
+      }
     };
-    imgs.forEach(img => {
-      if (!img) return;
-      if (img.complete) {
-        // 已完成加载，直接滚一次
-        onLoaded();
-      } else {
-        img.addEventListener('load', onLoaded, { once: true });
-        img.addEventListener('error', onLoaded, { once: true });
-      }
-    });
-    vids.forEach(v => {
-      if (!v) return;
-      if (v.readyState >= 2) {
-        onLoaded();
-      } else {
-        v.addEventListener('loadeddata', onLoaded, { once: true });
-        v.addEventListener('error', onLoaded, { once: true });
-      }
-    });
-
-    // 清理事件监听（避免内存泄漏）
+    imgs.forEach(img => { img.addEventListener('load', onLoaded); });
+    vids.forEach(v => { v.addEventListener('loadedmetadata', onLoaded); v.addEventListener('loadeddata', onLoaded); });
     return () => {
-      imgs.forEach(img => {
-        try {
-          img.removeEventListener('load', onLoaded);
-          img.removeEventListener('error', onLoaded);
-        } catch {}
-      });
-      vids.forEach(v => {
-        try {
-          v.removeEventListener('loadeddata', onLoaded);
-          v.removeEventListener('error', onLoaded);
-        } catch {}
-      });
+      imgs.forEach(img => { img.removeEventListener('load', onLoaded); });
+      vids.forEach(v => { v.removeEventListener('loadedmetadata', onLoaded); v.removeEventListener('loadeddata', onLoaded); });
     };
   }, [finalMessages]);
 
@@ -358,7 +350,9 @@ export default function ConversationDetail() {
     const el = rightScrollRef.current;
     if (!el) return;
     const raf = requestAnimationFrame(() => {
-      try { el.scrollTop = el.scrollHeight; } catch {}
+      // 仅在新的会话初始时开启自动滚动
+      autoScrollEnabledRef.current = true;
+      el.scrollTop = el.scrollHeight;
     });
     return () => cancelAnimationFrame(raf);
   }, [otherId]);
@@ -367,10 +361,34 @@ export default function ConversationDetail() {
   useEffect(() => {
     const el = rightScrollRef.current;
     if (!el) return;
-    const timer = setTimeout(() => {
-      try { el.scrollTop = el.scrollHeight; } catch {}
-    }, 0);
-    return () => clearTimeout(timer);
+
+    // 计算是否接近底部
+    const near = isNearBottom(el);
+
+    // 当前视图的ID集合
+    const currentIds = new Set((viewRecords || []).map(r => r?.id).filter(id => id != null));
+
+    if (autoScrollEnabledRef.current || near) {
+      // 到底部：滚到底并把当前所有ID标记为已看到
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+      seenIdsRef.current = currentIds;
+      // 维持原来的时间戳更新（用于其他依赖）
+      const maxTime = (viewRecords || []).reduce((acc, r) => {
+        const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
+        return t > acc ? t : acc;
+      }, 0);
+      lastSeenMaxTimeRef.current = maxTime;
+      setNewTip({ visible: false, count: 0 });
+    } else {
+      // 不在底部：统计“未看到”的ID数量（当前IDs - 已看到IDs）
+      const seen = seenIdsRef.current || new Set();
+      let inc = 0;
+      currentIds.forEach(id => { if (!seen.has(id)) inc += 1; });
+      // 只在有新增时提示；不累加，以当前未看到的真实数量为准
+      if (inc > 0) {
+        setNewTip({ visible: true, count: inc });
+      }
+    }
   }, [viewRecords]);
 
   const handleSend = async (e) => {
@@ -389,6 +407,8 @@ export default function ConversationDetail() {
         setMessages(prev => mergeMessages(prev, [j.data]));
       }
     } catch {}
+    // 发送后允许自动滚动到底（发出方通常希望看到最新）
+    autoScrollEnabledRef.current = true;
     refreshView();
   };
 
@@ -687,10 +707,7 @@ export default function ConversationDetail() {
           .then(j => {
             if (j && j.code === 200 && j.data?.list) {
               setMessages(prev => mergeMessages(prev, j.data.list));
-              requestAnimationFrame(() => {
-                const el = rightScrollRef.current;
-                if (el) el.scrollTop = el.scrollHeight;
-              });
+              // 不在此处滚动或累加提示，交给 viewRecords 的 effect 统一处理
             }
           })
           .catch(() => {});
@@ -702,6 +719,22 @@ export default function ConversationDetail() {
     window.addEventListener('pm-event', onPm);
     return () => window.removeEventListener('pm-event', onPm);
   }, [userId, otherId, refreshView, markReadCurrent]);
+
+  // 点击“新消息”按钮：回到底部并清空提示
+  const jumpToLatest = () => {
+    const el = rightScrollRef.current;
+    if (!el) return;
+    autoScrollEnabledRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    // 到底部时将当前视图ID标记为已看到
+    seenIdsRef.current = new Set((viewRecords || []).map(r => r?.id).filter(id => id != null));
+    const maxTime = (viewRecords || []).reduce((acc, r) => {
+      const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
+      return t > acc ? t : acc;
+    }, 0);
+    lastSeenMaxTimeRef.current = maxTime;
+    setNewTip({ visible: false, count: 0 });
+  };
 
   return (
     <div className="conversation-detail-page">
@@ -814,6 +847,26 @@ export default function ConversationDetail() {
               </div>
             );
           })}
+
+          {/* 右下角“新消息”提示按钮 */}
+          {newTip.visible && newTip.count > 0 && (
+            <button
+              type="button"
+              className="conversation-detail-sendbtn"
+              style={{
+                position: 'sticky',
+                float: 'right',
+                bottom: '12px',
+                right: '12px',
+                marginTop: '12px',
+                zIndex: 10
+              }}
+              onClick={jumpToLatest}
+              title="回到底部查看最新消息"
+            >
+              {newTip.count} 条新消息
+            </button>
+          )}
         </div>
 
         {/* 表单：输入栏新结构（图标 + 可拉伸 textarea + 发送按钮） */}
