@@ -14,9 +14,23 @@ export default function MessageList() {
       }
     })
       .then(r => r.json())
-      .then(j => {
-        if (j && j.code === 200) setConversations(j.data.list || []);
-      });
+      .then(j => { if (j && j.code === 200) setConversations(j.data.list || []); });
+  }, [userId]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (!userId) return;
+      fetch(`/api/messages/conversation/list`, { headers: { 'X-User-Id': userId } })
+        .then(r => r.json())
+        .then(j => { if (j && j.code === 200) setConversations(j.data.list || []); })
+        .catch(() => {});
+    };
+    window.addEventListener('pm-event', refresh);
+    window.addEventListener('pm-unread-refresh', refresh);
+    return () => {
+      window.removeEventListener('pm-event', refresh);
+      window.removeEventListener('pm-unread-refresh', refresh);
+    };
   }, [userId]);
 
   return (

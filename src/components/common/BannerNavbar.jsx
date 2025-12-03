@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 export default function BannerNavbar({ bannerId }) {
   const { isLoggedIn } = useAuthState();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;   // ← 新增
   const BASE_WIDTH = 1650;
   const [navHidden, setNavHidden] = useState(false);
   const [manifest, setManifest] = useState([]);
@@ -356,6 +357,58 @@ export default function BannerNavbar({ bannerId }) {
       .catch(() => {});
   }, [userId]);
 
+  // 新增：封装成函数，便于复用
+  const refreshUnreadTotal = React.useCallback(() => {
+    if (!userId) { setUnreadTotal(0); return; }
+    fetch('/api/messages/unread/total', { headers: { 'X-User-Id': userId } })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j && j.code === 200) setUnreadTotal(Number(j.data) || 0); })
+      .catch(() => {});
+  }, [userId]);
+
+  // 新增：订阅全局通知 SSE（后端已由 NotificationService 推送 PRIVATE_MESSAGE）
+  useEffect(() => {
+    if (!userId) return;
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : `?token=`;
+    let es = null;
+    try { es = new EventSource(`/api/friends/subscribe${tokenParam}`); } catch { es = null; }
+
+    const onMsg = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data && data.type === 'PRIVATE_MESSAGE') {
+          // 若正处于该会话页面
+          const m = (window.location.pathname || '').match(/\/conversation\/(\d+)/);
+          const currentOtherId = m ? m[1] : null;
+          const isCurrentConv = currentOtherId && String(currentOtherId) === String(data.senderId);
+
+          if (isCurrentConv) {
+            // 仅标记已读，不立刻刷新未读总数，避免红点闪一下
+            fetch(`/api/messages/conversation/${data.senderId}/read`, {
+              method: 'POST', headers: { 'X-User-Id': userId }
+            }).catch(() => {});
+          } else {
+            // 其他会话来消息：正常刷新未读总数
+            refreshUnreadTotal();
+          }
+
+          // 广播给其它页面（会话列表/会话详情）更新
+          try { window.dispatchEvent(new CustomEvent('pm-event', { detail: data })); } catch {}
+        }
+      } catch { /* ignore */ }
+    };
+    if (es) es.onmessage = onMsg;
+
+    // 监听“外部请求刷新未读”的自定义事件（进入会话等场景）
+    const onRefresh = () => refreshUnreadTotal();
+    window.addEventListener('pm-unread-refresh', onRefresh);
+
+    return () => {
+      try { if (es) es.close(); } catch {}
+      window.removeEventListener('pm-unread-refresh', onRefresh);
+    };
+  }, [userId, token, refreshUnreadTotal]);
+
   const resolveSrc = (src) => {
     if (!src) return '';
   if (/^\.\/assets\//.test(src)) return src.replace(/^\.\/assets\//, '/banner/assets/');
@@ -397,7 +450,7 @@ export default function BannerNavbar({ bannerId }) {
       </div>
       <div className="nav-inner">
         <div className="nav-brand" aria-label="站点标识">
-          <a href="/" className="penrose-logo" aria-label="Blog">
+          <a href="/" className="penrose-logo" aria-label="返回首页" title="返回首页">
             <div className="penrose-scale">
               <div className="penrose-shell">
                 <div className="penrose-wrapper">
