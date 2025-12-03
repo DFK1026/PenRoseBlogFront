@@ -20,6 +20,10 @@ export default function ConversationDetail() {
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
 
+  // 新增：记录本次会话中我已撤回过的消息ID（会话内强制为已撤回）
+  const recalledLocalRef = useRef(new Set());
+  const normId = (id) => String(id);
+
   // 新增：会话“视图”记录（权威列表，含撤回/已删）
   const [viewRecords, setViewRecords] = useState([]);
   // 右键菜单状态
@@ -171,15 +175,20 @@ export default function ConversationDetail() {
   // 新增：加载“视图”数据（过滤已删除 + 撤回信息）
   const refreshView = React.useCallback(() => {
     if (!userId || !otherId) return;
-    // 拉大 size，避免遗漏较多消息
     fetch(`/api/messages/conversation/view/${otherId}?page=0&size=500`, {
       headers: { 'X-User-Id': userId }
     })
       .then(r => r.json())
       .then(j => {
         if (j && j.code === 200 && j.data && Array.isArray(j.data.records || j.data.list)) {
-          const list = j.data.records || j.data.list; // 兼容 records/list 字段
-          setViewRecords(list);
+          const list = j.data.records || j.data.list;
+          // 关键：把“本地已撤回”的ID强制标记为 recalled=true，避免后端短时未反映导致回弹
+          const withLocal = list.map(r => (
+            recalledLocalRef.current.has(normId(r.id))
+              ? { ...r, recalled: true }
+              : r
+          ));
+          setViewRecords(withLocal);
         }
       })
       .catch(() => {});
@@ -215,11 +224,13 @@ export default function ConversationDetail() {
             senderAvatarUrl: (m && m.senderAvatarUrl) || '',
             receiverAvatarUrl: (m && m.receiverAvatarUrl) || ''
           };
-      merged.__recalled = !!v.recalled;
+      // 更稳健地解析 recalled
+      const recalledFlag =
+        v.recalled === true || v.recalled === 1 || v.recalled === 'true';
+      merged.__recalled = recalledFlag;
       merged.__displayText = v.displayText || '';
       if (merged.__recalled) {
-        merged.__originalText = (m && m.type === 'TEXT' && typeof m.text === 'string') ? m.text : '';
-        merged.__origType = m?.type;
+        if (m && m.text) merged.__originalText = m.text;
       }
       return merged;
     });
@@ -579,40 +590,49 @@ export default function ConversationDetail() {
 
   // 撤回与删除调用
   const recallMessage = async (messageId) => {
+    closeContextMenu();
+    if (!messageId) return;
     try {
-      const r = await fetch(`/api/messages/recall`, {
+      const res = await fetch('/api/messages/recall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
         body: JSON.stringify({ messageId })
       });
-      const j = await r.json().catch(() => ({}));
-      if (!(j && j.code === 200)) {
-        window.alert(j?.message || '撤回失败');
+      const j = await res.json().catch(() => null);
+      if (j && (j.code === 200 || j.status === 200)) {
+        // 记录到本地集合，并立即乐观置为撤回
+        recalledLocalRef.current.add(normId(messageId));
+        setViewRecords(prev => prev.map(r => (r && normId(r.id) === normId(messageId) ? { ...r, recalled: true } : r)));
+        refreshView(); // 再拉一次视图
+      } else {
+        alert((j && (j.msg || j.message)) || '撤回失败');
       }
-    } catch {
-      window.alert('网络错误，撤回失败');
-    } finally {
-      closeContextMenu();
-      refreshView();
+    } catch (e) {
+      console.error(e);
+      alert('网络错误');
     }
   };
 
   const deleteMessage = async (messageId) => {
+    closeContextMenu();
+    if (!messageId) return;
     try {
-      const r = await fetch(`/api/messages/delete`, {
+      const res = await fetch('/api/messages/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
         body: JSON.stringify({ messageId })
       });
-      const j = await r.json().catch(() => ({}));
-      if (!(j && j.code === 200)) {
-        window.alert(j?.message || '删除失败');
+      const j = await res.json().catch(() => null);
+      if (j && (j.code === 200 || j.status === 200)) {
+        // 乐观更新：从当前用户视图移除
+        setViewRecords(prev => prev.filter(r => r && r.id !== messageId));
+        refreshView();
+      } else {
+        alert((j && (j.msg || j.message)) || '删除失败');
       }
-    } catch {
-      window.alert('网络错误，删除失败');
-    } finally {
-      closeContextMenu();
-      refreshView();
+    } catch (e) {
+      console.error(e);
+      alert('网络错误');
     }
   };
 
@@ -726,33 +746,28 @@ export default function ConversationDetail() {
             const recalled = !!msg.__recalled;
 
             if (recalled) {
-              const canReEdit = isSelf && !!msg.__originalText;
-              const canDeleteRecall = isSelf;                      
+              // 撤回提示：发送方显示“重新编辑”，双方都显示小×删除
               return (
-                <div
-                  key={msg.id}
-                  className="conversation-detail-recall"
-                  onContextMenu={(e) => openContextMenu(e, msg)}
-                >
-                  <span className="txt">{msg.__displayText || '消息已撤回'}</span>
-                  {canReEdit && (
+                <div className="conversation-detail-recall" key={msg.id}>
+                  <span className="txt">{isSelf ? '你撤回了一条消息' : '对方撤回了一条消息'}</span>
+                  {isSelf && msg.__originalText && (
                     <button
                       type="button"
                       className="reedit"
-                      onClick={(e) => { e.stopPropagation(); reEditMessage(msg); }}
+                      onClick={() => reEditMessage(msg)}
+                      title="重新编辑并发送"
                     >
                       重新编辑
                     </button>
                   )}
-                  {canDeleteRecall && (
-                    <button
-                      type="button"
-                      className="recall-close"
-                      onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }}
-                    >
-                      ×
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="recall-close"
+                    onClick={() => deleteMessage(msg.id)}
+                    title="删除这条记录"
+                  >
+                    ×
+                  </button>
                 </div>
               );
             }
