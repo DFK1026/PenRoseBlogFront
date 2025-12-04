@@ -59,8 +59,11 @@ export default function ConversationDetail() {
     // 会话视图（包含撤回/已删）
     const [viewRecords, setViewRecords] = useState([]);
 
-    // 右键菜单
+    // 右键菜单（消息）
     const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, msg: null });
+
+    // 侧边栏头像菜单（拉黑/取消拉黑）
+    const [sidebarMenu, setSidebarMenu] = useState({ visible: false, x: 0, y: 0, user: null, blocked: false });
 
     // 输入框高度
     const [inputHeight, setInputHeight] = useState(() => {
@@ -134,6 +137,50 @@ export default function ConversationDetail() {
                 console.warn('markReadCurrent failed', err);
             });
     }, [userId, otherId]);
+
+    /** ---------------- Block API helpers ---------------- */
+
+    const checkBlockStatus = async (targetId) => {
+        if (!userId || !targetId) return false;
+        try {
+            const res = await fetch(`/api/block/status/${targetId}`, {
+                headers: { 'X-User-Id': userId }
+            });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200) return !!j.data;
+        } catch (err) {
+            console.warn('checkBlockStatus failed', err);
+        }
+        return false;
+    };
+
+    const toggleBlockUser = async (targetId) => {
+        if (!userId || !targetId) return null;
+        try {
+            const res = await fetch(`/api/block/toggle/${targetId}`, {
+                method: 'POST',
+                headers: { 'X-User-Id': userId }
+            });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200) {
+                // update local conversation entry if present
+                setConversations(prev => {
+                    if (!Array.isArray(prev)) return prev;
+                    return prev.map(c => c && String(c.otherId) === String(targetId)
+                        ? { ...c, blocked: j.data === true }
+                        : c
+                    );
+                });
+                return !!j.data;
+            } else {
+                alert((j && (j.msg || j.message)) || '操作失败');
+            }
+        } catch (err) {
+            console.error('toggleBlockUser failed', err);
+            alert('网络错误');
+        }
+        return null;
+    };
 
     /** ---------------- 分页获取消息（带本地缓存） ---------------- */
 
@@ -271,7 +318,8 @@ export default function ConversationDetail() {
                         avatarUrl: c.avatarUrl,
                         lastMessage: c.lastMessage,
                         lastAt: c.lastAt,
-                        unreadCount: c.unreadCount || 0
+                        unreadCount: c.unreadCount || 0,
+                        blocked: false // default, updated later when user queries or toggles
                     }))
                 );
             }
@@ -316,8 +364,11 @@ export default function ConversationDetail() {
 
                     list = await Promise.all(
                         list.map(async x => {
-                            if (!x || String(x.otherId) !== String(otherId)) return x;
-                            if (x.nickname && x.avatarUrl) return x;
+                            if (!x || String(x.otherId) !== String(otherId)) {
+                                // keep existing entries but add blocked=false by default
+                                return { ...x, blocked: false };
+                            }
+                            if (x.nickname && x.avatarUrl) return { ...x, blocked: false };
                             try {
                                 const pr = await fetch(`/api/user/profile/${x.otherId}`);
                                 const pj = await pr.json();
@@ -325,7 +376,8 @@ export default function ConversationDetail() {
                                     return {
                                         ...x,
                                         nickname: x.nickname || pj.data.nickname || '',
-                                        avatarUrl: x.avatarUrl || pj.data.avatarUrl || ''
+                                        avatarUrl: x.avatarUrl || pj.data.avatarUrl || '',
+                                        blocked: false
                                     };
                                 }
                             } catch (err) {
@@ -334,7 +386,8 @@ export default function ConversationDetail() {
                             return {
                                 ...x,
                                 nickname: x.nickname || otherInfo?.nickname || '',
-                                avatarUrl: x.avatarUrl || otherInfo?.avatarUrl || ''
+                                avatarUrl: x.avatarUrl || otherInfo?.avatarUrl || '',
+                                blocked: false
                             };
                         })
                     );
@@ -349,6 +402,13 @@ export default function ConversationDetail() {
 
         loadList();
     }, [userId, otherId, otherInfo]);
+
+    // close sidebar menu when clicking anywhere
+    useEffect(() => {
+        const onDocClick = () => setSidebarMenu({ visible: false, x: 0, y: 0, user: null, blocked: false });
+        document.addEventListener('click', onDocClick);
+        return () => document.removeEventListener('click', onDocClick);
+    }, []);
 
     // 视图加载
     useEffect(() => {
@@ -556,16 +616,20 @@ export default function ConversationDetail() {
         });
         setText('');
         try {
-            const j = await res.json();
+            const j = await res.json().catch(() => null);
             if (j && j.code === 200 && j.data) {
                 const msg = j.data;
                 setMessages(prev => mergeMessages(prev, [msg]));
                 cacheConversationMessages(userId, otherId, [msg], 1000)
                     .then(() => console.log('[PM] cache after send text, id=', msg.id))
                     .catch(() => {});
+            } else {
+                // show server message (for blocked or other reasons)
+                alert((j && (j.msg || j.message)) || '发送失败');
             }
         } catch (err) {
             console.warn('parse send text response failed', err);
+            alert('发送失败');
         }
         autoScrollEnabledRef.current = true;
         refreshView();
@@ -1031,6 +1095,19 @@ export default function ConversationDetail() {
                                     target.onerror = null;
                                     target.src = '/imgs/loginandwelcomepanel/1.png';
                                 }}
+                                onContextMenu={async (e) => {
+                                    e.preventDefault();
+                                    // stop propagation to avoid outer click handlers
+                                    e.stopPropagation();
+                                    const blocked = await checkBlockStatus(c.otherId);
+                                    setSidebarMenu({
+                                        visible: true,
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        user: c,
+                                        blocked
+                                    });
+                                }}
                             />
                             <span className="conversation-sidebar-name">
                                 {c.nickname || `用户${c.otherId}`}
@@ -1041,6 +1118,12 @@ export default function ConversationDetail() {
                                     title={`未读 ${c.unreadCount}`}
                                 >
                                     {c.unreadCount > 99 ? '99+' : c.unreadCount}
+                                </span>
+                            )}
+                            {/* optional blocked indicator */}
+                            {c.blocked && (
+                                <span className="conversation-sidebar-blocked" title="你已拉黑此用户">
+                                    已拉黑
                                 </span>
                             )}
                         </button>
@@ -1187,7 +1270,7 @@ export default function ConversationDetail() {
                     )}
                 </div>
 
-                {/* 输入框与发送 */}
+                {/* 右侧输入区 */}
                 <form
                     className="conversation-detail-form"
                     onSubmit={handleSend}
@@ -1265,7 +1348,7 @@ export default function ConversationDetail() {
                 )}
             </div>
 
-            {/* 右键菜单 */}
+            {/* 右键菜单（消息） */}
             {menu.visible && menu.msg && (
                 <div
                     className="msg-context-menu"
@@ -1279,6 +1362,38 @@ export default function ConversationDetail() {
                             <button onClick={() => recallMessage(menu.msg.id)}>撤回</button>
                         )}
                     <button onClick={() => deleteMessage(menu.msg.id)}>删除</button>
+                </div>
+            )}
+
+            {/* 侧边栏头像右键菜单（拉黑/取消拉黑） */}
+            {sidebarMenu.visible && sidebarMenu.user && (
+                <div
+                    className="sidebar-context-menu"
+                    style={{
+                        position: 'fixed',
+                        left: sidebarMenu.x,
+                        top: sidebarMenu.y,
+                        zIndex: 1200,
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        padding: '6px',
+                        borderRadius: 4
+                    }}
+                    onClick={(e) => {
+                        // prevent outer click handlers from immediately closing menu
+                        e.stopPropagation();
+                    }}
+                >
+                    <button
+                        onClick={async () => {
+                            const targetId = sidebarMenu.user.otherId;
+                            const result = await toggleBlockUser(targetId);
+                            // reflect toggled state in menu
+                            setSidebarMenu(s => ({ ...s, visible: false, user: null, blocked: !!result }));
+                        }}
+                    >
+                        {sidebarMenu.blocked ? '取消拉黑该用户' : '拉黑该用户'}
+                    </button>
                 </div>
             )}
         </div>
