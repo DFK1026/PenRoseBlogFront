@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import '../styles/message/MessageList.css';
+import BannerNavbar from '../components/common/BannerNavbar';
 
 export default function PendingFriendRequests() {
   const [list, setList] = useState([]);
@@ -79,29 +80,37 @@ export default function PendingFriendRequests() {
   };
 
   return (
-    <div className="message-list-container">
-      <h2 className="message-list-title">好友请求</h2>
-      {error ? (
-        <div className="message-list-empty" style={{color:'red'}}>{error}</div>
-      ) : list.length === 0 ? (
-        <div className="message-list-empty">暂无请求</div>
-      ) : (
-        <ul className="message-list-ul">
-          {list.map(req => (
-            <li key={req.id} className="message-list-item">
-              <img src={req.senderAvatarUrl || '/imgs/loginandwelcomepanel/1.png'} alt="avatar" className="message-list-avatar" />
-              <div style={{ flex: 1 }}>
-                <div className="message-list-nickname">{req.senderNickname || req.senderUsername}</div>
-                <div style={{ color: '#666' }}>{req.message}</div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => respond(req.id, true)}>接受</button>
-                <button onClick={() => respond(req.id, false)}>拒绝</button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="message-list-page">
+      <BannerNavbar />
+      <div className="message-list-container">
+        <h2 className="message-list-title">好友请求</h2>
+        {error ? (
+          <div className="message-list-empty" style={{color:'red'}}>{error}</div>
+        ) : list.length === 0 ? (
+          <div className="message-list-empty">暂无请求</div>
+        ) : (
+          <ul className="message-list-ul">
+            {list.map(req => (
+              <li key={req.id} className="message-list-item">
+                <img
+                  src={req.senderAvatarUrl || '/imgs/loginandwelcomepanel/1.png'}
+                  alt="avatar"
+                  className="message-list-avatar"
+                  onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div className="message-list-nickname">{req.senderNickname || req.senderUsername}</div>
+                  <div style={{ color: '#666' }}>{req.message}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => respond(req.id, true)}>接受</button>
+                  <button onClick={() => respond(req.id, false)}>拒绝</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

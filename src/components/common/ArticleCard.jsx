@@ -1,32 +1,89 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import '../../styles/common/ArticleCard.css';
 import resolveUrl from '../../utils/resolveUrl';
 
-export default function ArticleCard({ post }) {
+function truncateByUnits(text = '', limitUnits = 48) {
+  let units = 0;
+  let out = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    const isAscii = code <= 0x007f;
+    const add = isAscii ? 1 : 2;
+    if (units + add > limitUnits) break;
+    units += add;
+    out += ch;
+  }
+  return out;
+}
+
+export default function ArticleCard({ post, className }) {
   const navigate = useNavigate();
   const handleClick = () => navigate(`/post/${post.id}`);
+  const [views, setViews] = useState(null);
+
   const coverSrc = resolveUrl(post.coverImageUrl) || null;
-  return (
-    <div className="article-card" onClick={handleClick} role="button" tabIndex={0}>
-      {coverSrc && (
-        <div className="article-card-cover">
-          <img src={coverSrc} alt="cover" />
-        </div>
-      )}
-      <div className="article-card-body">
-        <div className="article-card-author-meta" style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-          {post.authorAvatarUrl && (
-            <img src={resolveUrl(post.authorAvatarUrl)} alt="avatar" style={{width:24,height:24,borderRadius:'50%',objectFit:'cover'}} />
-          )}
-          <span style={{fontSize:14,color:'#888'}}>{post.authorNickname || '匿名'}</span>
-        </div>
-        <h3 className="article-card-title">{post.title}</h3>
-        <div className="article-card-stats" style={{display:'flex',alignItems:'center',gap:16,marginTop:8}}>
-          <span style={{fontSize:13,color:'#1976d2'}}>👍 {post.likeCount || 0}</span>
-          <span style={{fontSize:13,color:'#3b82f6'}}>💬 {post.commentCount || 0}</span>
+  const avatar = post.authorAvatarUrl || post.avatarUrl;
+  const author = post.authorNickname || post.authorName || post.author || post.username || '匿名';
+  const created = post.createdAt || post.created || post.createTime;
+  const likeCount = post.likeCount || post.likes || 0;
+  const commentCount = post.commentCount || post.comments || 0;
+  const id = post.id || post.postId;
+
+  // 加载当前文章的浏览量
+  useEffect(() => {
+    let mounted = true;
+    if (!id) { setViews(0); return; }
+    fetch(`/api/blogview/${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!mounted) return;
+        if (j && j.code === 200 && j.data) setViews(Number(j.data.viewCount || 0));
+        else setViews(0);
+      })
+      .catch(() => { if (mounted) setViews(0); });
+
+    const onUpdate = (e) => {
+      try {
+        const d = e?.detail || {};
+        if (String(d.blogPostId) === String(id) && d.viewCount != null) {
+          setViews(Number(d.viewCount));
+        }
+      } catch {}
+    };
+    window.addEventListener('blogview-updated', onUpdate);
+    return () => { mounted = false; window.removeEventListener('blogview-updated', onUpdate); };
+  }, [id]);
+
+  const rawContent = post.content || post.summary || '';
+  const preview = truncateByUnits(
+    // 去除简单 Markdown 标记后再截断
+    String(rawContent).replace(/[#>*`~\-!\[\]\(\)]/g, ' ').replace(/\s+/g, ' ').trim(),
+    48
+  );
+
+  const card = (
+    <div className={['home-article-card', className].filter(Boolean).join(' ')}>
+      <div className="home-article-content">
+        <div className="home-article-title">{post.title}</div>
+        <div className="home-article-preview">{preview}</div>
+        <div className="home-article-footer">
+          {avatar && <img src={avatar} alt="avatar" className="home-article-author-avatar" />}
+          <span>{author}</span>
+          {created && <span style={{ color:'#9aa3b2' }}>{new Date(created).toLocaleDateString()}</span>}
+          {/* 阅读量展示：位于点赞评论左侧 */}
+          <span className="home-article-views" title="阅读量">👁️ {views !== null ? views : '—'}</span>
+          <div className="home-article-meta">👍 {likeCount}　💬 {commentCount}</div>
         </div>
       </div>
+      {coverSrc ? <img src={coverSrc} alt="cover" className="home-article-cover" /> : <div />}
     </div>
+  );
+
+  // 修复整卡点击可进入文章详情
+  return (
+    <Link to={`/post/${post.id || post.postId}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+      {card}
+    </Link>
   );
 }

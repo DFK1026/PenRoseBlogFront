@@ -505,7 +505,7 @@ export default function BannerNavbar({ bannerId }) {
             className="nav-edit-blog-btn"
             style={{ marginLeft: 6 }}
           >
-            编辑文章
+            发布文章
           </Link>
         </div>
         {/* nav-inner 右侧第8格：头像 */}
