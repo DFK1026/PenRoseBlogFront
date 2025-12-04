@@ -1,951 +1,1401 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, {
+    useEffect,
+    useState,
+    useRef,
+    useLayoutEffect,
+    useCallback,
+    useMemo
+} from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import BannerNavbar from '../components/common/BannerNavbar';
 import '../styles/message/ConversationDetail.css';
 
+// 本地缓存服务
+import {
+    preloadConversationMessages,
+    cacheConversationMessages,
+    cacheConversationSummaries,
+    loadCachedConversationSummaries
+} from '../utils/localPmCacheService';
+
 export default function ConversationDetail() {
-  const { otherId } = useParams();
-  const navigate = useNavigate();
-  const [messages, setMessages] = useState([]);
-  const [text, setText] = useState('');
-  const [otherInfo, setOtherInfo] = useState({ nickname: '', avatarUrl: '' });
-  const [conversations, setConversations] = useState([]); // 左侧会话摘要列表
-  const userId = localStorage.getItem('userId');
-  const rightScrollRef = useRef(null);
-  // 新增：滚动相关状态
-  const userScrollingUpRef = useRef(false);
-  const autoScrollEnabledRef = useRef(true);
-  const isNearBottom = (el, thresh = 40) => {
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= thresh;
-  };
-  const leftScrollRef = useRef(null);   // 左侧列表滚动容器
+    const { otherId } = useParams();
+    const navigate = useNavigate();
 
-  // 新增：上传相关状态与 ref
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const imageInputRef = useRef(null);
-  const videoInputRef = useRef(null);
+    // 核心状态
+    const [messages, setMessages] = useState([]);
+    const [text, setText] = useState('');
+    const [otherInfo, setOtherInfo] = useState({ nickname: '', avatarUrl: '' });
+    const [conversations, setConversations] = useState([]); // 左侧会话摘要列表
+    const userId = localStorage.getItem('userId');
 
-  // 新增：记录本次会话中我已撤回过的消息ID（会话内强制为已撤回）
-  const recalledLocalRef = useRef(new Set());
-  const normId = (id) => String(id);
+    // 分页
+    const [page, setPage] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // 新增：会话“视图”记录（权威列表，含撤回/已删）
-  const [viewRecords, setViewRecords] = useState([]);
-  // 右键菜单状态
-  const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, msg: null });
-  const [inputHeight, setInputHeight] = useState(() => {
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
-    return Math.max(56, Math.round(vh * 0.15)); // 15vh
-  });
-  const inputRef = useRef(null);
+    // 滚动
+    const rightScrollRef = useRef(null);
+    const leftScrollRef = useRef(null);
+    const userScrollingUpRef = useRef(false);
+    const autoScrollEnabledRef = useRef(true);
+    const previousScrollHeightRef = useRef(0);
 
-  const mergeMessages = (oldList, newList) => {
-    if ((!oldList || oldList.length === 0) && (!newList || newList.length === 0)) return [];
-    const mergedArr = [];
-    const seen = new Map();
-    const keyOf = (m) => {
-      if (!m) return null;
-      if (m.id != null) return `id:${m.id}`;
-      // fallback composite key: createdAt + sender + receiver + text
-      const time = m.createdAt ? String(m.createdAt) : '';
-      const s = m.senderId != null ? String(m.senderId) : '';
-      const r = m.receiverId != null ? String(m.receiverId) : '';
-      const t = m.text != null ? String(m.text) : '';
-      return `c:${time}|s:${s}|r:${r}|t:${t}`;
+    const isNearBottom = (el, thresh = 40) => {
+        if (!el) return true;
+        return el.scrollHeight - el.scrollTop - el.clientHeight <= thresh;
     };
 
-    const pushIfNew = (m) => {
-      const k = keyOf(m);
-      if (!k) return;
-      if (!seen.has(k)) {
-        seen.set(k, true);
-        mergedArr.push(m);
-      }
-    };
+    // 上传
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const imageInputRef = useRef(null);
+    const videoInputRef = useRef(null);
 
-    // prefer preserving order: first oldList then newList, but allow newList to override content by key
-    (oldList || []).forEach(pushIfNew);
-    (newList || []).forEach(pushIfNew);
+    // 撤回相关
+    const recalledLocalRef = useRef(new Set());
+    const normId = (id) => String(id);
 
-    // sort by createdAt asc (fallback to keep existing order when missing)
-    mergedArr.sort((a, b) => {
-      const ta = a && a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b && b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return ta - tb;
+    // 会话视图（包含撤回/已删）
+    const [viewRecords, setViewRecords] = useState([]);
+
+    // 右键菜单（消息）
+    const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, msg: null });
+
+    // 侧边栏头像菜单（拉黑/取消拉黑）
+    const [sidebarMenu, setSidebarMenu] = useState({ visible: false, x: 0, y: 0, user: null, blocked: false });
+
+    // 输入框高度
+    const [inputHeight, setInputHeight] = useState(() => {
+        const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+        return Math.max(56, Math.round(vh * 0.15));
     });
+    const inputRef = useRef(null);
 
-    return mergedArr;
-  };
-  // 进入会话后标记已读（抽成函数，便于复用）
-  const markReadCurrent = React.useCallback(() => {
-    if (!userId || !otherId) return;
-    fetch(`/api/messages/conversation/${otherId}/read`, {
-      method: 'POST',
-      headers: { 'X-User-Id': userId }
-    })
-    .then(() => {
-      setConversations(prev =>
-        (prev || []).map(x => String(x.otherId) === String(otherId) ? { ...x, unreadCount: 0 } : x)
-      );
-      try { window.dispatchEvent(new Event('pm-unread-refresh')); } catch {}
-    })
-    .catch(() => {});
-  }, [userId, otherId]);
+    // 新消息提示
+    const [newTip, setNewTip] = useState({ visible: false, count: 0 });
+    const lastSeenMaxTimeRef = useRef(0);
+    const seenIdsRef = useRef(new Set());
 
-  // 进入会话时即刻标记已读
-  useEffect(() => { markReadCurrent(); }, [markReadCurrent]);
+    /** ---------------- 工具方法 ---------------- */
 
-  // 加载右侧会话消息
-  useEffect(() => {
-    if (!userId || !otherId) return;
-    fetch(`/api/messages/conversation/${otherId}`, {
-      headers: { 'X-User-Id': userId }
-    })
-      .then(r => r.json())
-      .then(j => {
-        if (j && j.code === 200 && j.data)
-          setMessages(prev => mergeMessages(prev, j.data.list || []));
-      });
-  }, [userId, otherId]);
+    const mergeMessages = (oldList, newList) => {
+        if ((!oldList || oldList.length === 0) && (!newList || newList.length === 0)) return [];
+        const mergedArr = [];
+        const seen = new Map();
+        const keyOf = (m) => {
+            if (!m) return null;
+            if (m.id != null) return `id:${m.id}`;
+            const time = m.createdAt ? String(m.createdAt) : '';
+            const s = m.senderId != null ? String(m.senderId) : '';
+            const r = m.receiverId != null ? String(m.receiverId) : '';
+            const t = m.text != null ? String(m.text) : '';
+            return `c:${time}|s:${s}|r:${r}|t:${t}`;
+        };
 
-  // 加载左侧会话摘要列表（含头像、昵称、未读数）
-  useEffect(() => {
-    if (!userId) return;
-    const loadList = async () => {
-      try {
-        const r = await fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } });
-        const j = await r.json();
-        if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
-          let list = j.data.list;
-
-          // 若当前会话对象不在列表中，补一条占位项（无消息也显示）
-          const exists = list.some(x => String(x.otherId) === String(otherId));
-          if (!exists && otherId) {
-            // 尝试获取真实昵称与头像
-            let profileNick = '';
-            let profileAvatar = '';
-            try {
-              const pr = await fetch(`/api/user/profile/${otherId}`);
-              const pj = await pr.json();
-              if (pj && pj.code === 200 && pj.data) {
-                profileNick = pj.data.nickname || '';
-                profileAvatar = pj.data.avatarUrl || '';
-              }
-            } catch {/* ignore */}
-
-            list = [
-              {
-                otherId: Number(otherId),
-                nickname: profileNick || otherInfo?.nickname || '',
-                avatarUrl: profileAvatar || otherInfo?.avatarUrl || '',
-                lastMessage: '',
-                lastAt: null,
-                unreadCount: 0
-              },
-              ...list
-            ];
-          }
-
-          // 如果接口返回的该用户条目缺少昵称/头像，也用 profile 补齐
-          list = await Promise.all(list.map(async (x) => {
-            if (!x || String(x.otherId) !== String(otherId)) return x;
-            if (x.nickname && x.avatarUrl) return x;
-            try {
-              const pr = await fetch(`/api/user/profile/${x.otherId}`);
-              const pj = await pr.json();
-              if (pj && pj.code === 200 && pj.data) {
-                return {
-                  ...x,
-                  nickname: x.nickname || pj.data.nickname || '',
-                  avatarUrl: x.avatarUrl || pj.data.avatarUrl || ''
-                };
-              }
-            } catch {/* ignore */}
-            return {
-              ...x,
-              nickname: x.nickname || otherInfo?.nickname || '',
-              avatarUrl: x.avatarUrl || otherInfo?.avatarUrl || ''
-            };
-          }));
-
-          setConversations(list);
-        }
-      } catch (e) {
-        // ignore
-      }
-    };
-    loadList();
-  }, [userId, otherId, otherInfo]);
-
-  // 新增：加载“视图”数据（过滤已删除 + 撤回信息）
-  const refreshView = React.useCallback(() => {
-    if (!userId || !otherId) return;
-    fetch(`/api/messages/conversation/view/${otherId}?page=0&size=500`, {
-      headers: { 'X-User-Id': userId }
-    })
-      .then(r => r.json())
-      .then(j => {
-        if (j && j.code === 200 && j.data && Array.isArray(j.data.records || j.data.list)) {
-          const list = j.data.records || j.data.list;
-          // 关键：把“本地已撤回”的ID强制标记为 recalled=true，避免后端短时未反映导致回弹
-          const withLocal = list.map(r => (
-            recalledLocalRef.current.has(normId(r.id))
-              ? { ...r, recalled: true }
-              : r
-          ));
-          setViewRecords(withLocal);
-        }
-      })
-      .catch(() => {});
-  }, [userId, otherId]);
-
-  useEffect(() => { refreshView(); }, [refreshView]);
-
-  // 切换会话时清空旧消息，避免与上一位用户混杂
-  useEffect(() => { setMessages([]); setViewRecords([]); }, [otherId]);
-
-  // 根据“视图”与“详细消息”合成实际渲染列表
-  const messagesById = React.useMemo(() => {
-    const map = new Map();
-    (messages || []).forEach(m => { if (m && m.id != null) map.set(m.id, m); });
-    return map;
-  }, [messages]);
-
-  const finalMessages = React.useMemo(() => {
-    return (viewRecords || []).map(v => {
-      const m = v?.id != null ? messagesById.get(v.id) : null;
-      const merged = m
-        ? { ...m }
-        : {
-            id: v.id,
-            senderId: v.senderId,
-            receiverId: v.receiverId,
-            createdAt: v.createdAt,
-            text: v.displayText || '',
-            type: null,
-            mediaUrl: null,
-            senderNickname: (m && m.senderNickname) || '',
-            receiverNickname: (m && m.receiverNickname) || '',
-            senderAvatarUrl: (m && m.senderAvatarUrl) || '',
-            receiverAvatarUrl: (m && m.receiverAvatarUrl) || ''
-          };
-      // 更稳健地解析 recalled
-      const recalledFlag =
-        v.recalled === true || v.recalled === 1 || v.recalled === 'true';
-      merged.__recalled = recalledFlag;
-      merged.__displayText = v.displayText || '';
-      if (merged.__recalled) {
-        if (m && m.text) merged.__originalText = m.text;
-      }
-      return merged;
-    });
-  }, [viewRecords, messagesById]);
-
-  // 从消息推断对方信息（改为用 finalMessages）
-  useEffect(() => {
-    if (!finalMessages || finalMessages.length === 0) return;
-    for (let m of finalMessages) {
-      if (m.senderId !== Number(userId)) {
-        setOtherInfo({ nickname: m.senderNickname || '', avatarUrl: m.senderAvatarUrl || '' });
-        return;
-      }
-      if (m.receiverId !== Number(userId)) {
-        setOtherInfo({ nickname: m.receiverNickname || '', avatarUrl: m.receiverAvatarUrl || '' });
-        return;
-      }
-    }
-  }, [finalMessages, userId]);
-
-  // 监听右侧消息栏滚动，用户上滑时禁用自动滚动
-  useEffect(() => {
-    const el = rightScrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      // 用户只要不是接近底部，就认为在上滑查看历史
-      const near = isNearBottom(el);
-      userScrollingUpRef.current = !near;
-      autoScrollEnabledRef.current = near;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    // 初始设为是否在底部
-    autoScrollEnabledRef.current = isNearBottom(el);
-    userScrollingUpRef.current = !autoScrollEnabledRef.current;
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // 新增：右下角“新消息”提示状态 & 最近已看到的最大时间
-  const [newTip, setNewTip] = useState({ visible: false, count: 0 });
-  const lastSeenMaxTimeRef = useRef(0);
-  // 新增：已看到的消息ID集合（更可靠的计数依据）
-  const seenIdsRef = useRef(new Set());
-
-  // SSE/轮询更新：收到任何事件后只触发刷新，避免与视图不一致
-  useEffect(() => {
-    if (!otherId || !userId) return;
-    let es = null;
-    let pollTimer = null;
-    const subscribeUrl = `/api/messages/subscribe/${otherId}?userId=${encodeURIComponent(userId)}&_=${Date.now()}`;
-    try { es = new EventSource(subscribeUrl); } catch { es = null; }
-
-    const onAny = () => {
-      // 收到更新时不改动 autoScrollEnabledRef，让用户上滑时不弹回底部
-      refreshView();
-      try { window.dispatchEvent(new Event('pm-unread-refresh')); } catch {}
-    };
-
-    if (es) {
-      es.addEventListener('init', onAny);
-      es.addEventListener('update', onAny);
-      es.onerror = () => {
-        if (es) { try { es.close(); } catch {} es = null; }
-        pollTimer = setInterval(() => { refreshView(); }, 3000);
-      };
-    } else {
-      pollTimer = setInterval(() => { refreshView(); }, 3000);
-    }
-
-    // 初始刷新一次，但不强制滚到底
-    refreshView();
-
-    return () => {
-      if (es) {
-        try {
-          es.removeEventListener('init', onAny);
-          es.removeEventListener('update', onAny);
-          es.close();
-        } catch {}
-      }
-      if (pollTimer) clearInterval(pollTimer);
-    };
-  }, [otherId, userId, refreshView]);
-
-  // 仅让右侧会话容器自身滚动到底部（初始/更新时）
-  useEffect(() => {
-    const el = rightScrollRef.current;
-    if (!el) return;
-    // 仅在接近底部或允许自动滚动时滚到底，避免用户上滑时弹回
-    if (autoScrollEnabledRef.current || isNearBottom(el)) {
-      el.scrollTop = el.scrollHeight;
-    }
-    // 媒体加载完成后再尝试滚到底（同样受 autoScroll 控制）
-    const imgs = Array.from(el.querySelectorAll('img.conversation-detail-msgmedia'));
-    const vids = Array.from(el.querySelectorAll('video.conversation-detail-msgmedia'));
-    const onLoaded = () => {
-      if (autoScrollEnabledRef.current || isNearBottom(el)) {
-        el.scrollTop = el.scrollHeight;
-      }
-    };
-    imgs.forEach(img => { img.addEventListener('load', onLoaded); });
-    vids.forEach(v => { v.addEventListener('loadedmetadata', onLoaded); v.addEventListener('loadeddata', onLoaded); });
-    return () => {
-      imgs.forEach(img => { img.removeEventListener('load', onLoaded); });
-      vids.forEach(v => { v.removeEventListener('loadedmetadata', onLoaded); v.removeEventListener('loadeddata', onLoaded); });
-    };
-  }, [finalMessages]);
-
-  // 切换会话后，等待一帧再滚到底，确保 DOM 更新完成
-  useEffect(() => {
-    const el = rightScrollRef.current;
-    if (!el) return;
-    const raf = requestAnimationFrame(() => {
-      // 仅在新的会话初始时开启自动滚动
-      autoScrollEnabledRef.current = true;
-      el.scrollTop = el.scrollHeight;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [otherId]);
-
-  // 视图刷新完成后也滚到底（收到新消息或SSE触发时）
-  useEffect(() => {
-    const el = rightScrollRef.current;
-    if (!el) return;
-
-    // 计算是否接近底部
-    const near = isNearBottom(el);
-
-    // 当前视图的ID集合
-    const currentIds = new Set((viewRecords || []).map(r => r?.id).filter(id => id != null));
-
-    if (autoScrollEnabledRef.current || near) {
-      // 到底部：滚到底并把当前所有ID标记为已看到
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-      seenIdsRef.current = currentIds;
-      // 维持原来的时间戳更新（用于其他依赖）
-      const maxTime = (viewRecords || []).reduce((acc, r) => {
-        const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
-        return t > acc ? t : acc;
-      }, 0);
-      lastSeenMaxTimeRef.current = maxTime;
-      setNewTip({ visible: false, count: 0 });
-    } else {
-      // 不在底部：统计“未看到”的ID数量（当前IDs - 已看到IDs）
-      const seen = seenIdsRef.current || new Set();
-      let inc = 0;
-      currentIds.forEach(id => { if (!seen.has(id)) inc += 1; });
-      // 只在有新增时提示；不累加，以当前未看到的真实数量为准
-      if (inc > 0) {
-        setNewTip({ visible: true, count: inc });
-      }
-    }
-  }, [viewRecords]);
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    const body = { text };
-    const res = await fetch(`/api/messages/text/${otherId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-      body: JSON.stringify(body)
-    });
-    setText('');
-    try {
-      const j = await res.json();
-      if (j && j.code === 200 && j.data) {
-        setMessages(prev => mergeMessages(prev, [j.data]));
-      }
-    } catch {}
-    // 发送后允许自动滚动到底（发出方通常希望看到最新）
-    autoScrollEnabledRef.current = true;
-    refreshView();
-  };
-
-  // 新增：在 textarea 中支持 Shift+Enter 换行、Enter 发送
-  const onInputKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      // 直接调用发送
-      const fakeEvent = { preventDefault: () => {} };
-      handleSend(fakeEvent);
-    }
-    // Shift+Enter 默认行为换行，无需特殊处理
-  };
-
-  // 新增：带进度的上传函数
-  const uploadFile = (file) => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const form = new FormData();
-      form.append('file', file);
-      xhr.open('POST', '/api/messages/upload');
-      if (userId) xhr.setRequestHeader('X-User-Id', userId);
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const p = Math.round((e.loaded / e.total) * 100);
-          setUploadProgress(p);
-        }
-      };
-      xhr.onload = () => {
-        try {
-          const res = JSON.parse(xhr.responseText || '{}');
-          if (res && res.code === 200 && res.data) {
-            resolve(res.data);
-          } else {
-            reject(new Error(res?.message || '上传失败'));
-          }
-        } catch {
-          reject(new Error('上传响应解析失败'));
-        }
-      };
-      xhr.onerror = () => reject(new Error('网络错误，上传失败'));
-      xhr.send(form);
-    });
-  };
-
-  // 新增：选择文件并上传后发送媒体消息
-  const handleFileChosen = async (e, type) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-    try {
-      // 1) 上传文件，得到后端可访问的 URL
-      const url = await uploadFile(file);
-
-      // 2) 发送媒体消息
-      const body = { type, mediaUrl: url, text: '' };
-      const res = await fetch(`/api/messages/media/${otherId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-        body: JSON.stringify(body)
-      });
-
-      const j = await res.json().catch(() => null);
-      if (j && j.code === 200 && j.data) {
-        const dto = j.data;
-
-        // 立即合并到详细 messages，避免“发送端不显示”
-        setMessages(prev => {
-          const next = Array.isArray(prev) ? prev.slice() : [];
-          next.push({
-            id: dto.id,
-            senderId: dto.senderId,
-            receiverId: dto.receiverId,
-            text: dto.text || '',
-            mediaUrl: dto.mediaUrl || '',
-            type: dto.type || type,
-            createdAt: dto.createdAt,
-            senderNickname: dto.senderNickname || '你',
-            senderAvatarUrl: dto.senderAvatarUrl || (otherInfo?.avatarUrl || ''),
-            receiverNickname: dto.receiverNickname || otherInfo?.nickname || '',
-            receiverAvatarUrl: dto.receiverAvatarUrl || (otherInfo?.avatarUrl || '')
-          });
-          // 按时间排序，确保位置正确
-          next.sort((a, b) => {
-            const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return ta - tb;
-          });
-          return next;
-        });
-
-        // 立即为视图追加占位记录，避免接收端首次渲染为空白
-        setViewRecords(prev => {
-          const next = Array.isArray(prev) ? prev.slice() : [];
-          next.push({
-            id: dto.id,
-            senderId: dto.senderId,
-            receiverId: dto.receiverId,
-            createdAt: dto.createdAt,
-            recalled: false,
-            displayText: dto.text || ''
-          });
-          next.sort((a, b) => {
-            const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return ta - tb;
-          });
-          return next;
-        });
-
-        // 滚动到底部
-        requestAnimationFrame(() => {
-          const el = rightScrollRef.current;
-          if (el) el.scrollTop = el.scrollHeight;
-        });
-      } else {
-        alert((j && (j.message || j.msg)) || '发送失败');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('上传或发送失败');
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-      // 保险：再拉一次视图，确保双方一致
-      refreshView();
-    }
-  };
-
-  const onPickImageClick = () => imageInputRef.current && imageInputRef.current.click();
-  const onPickVideoClick = () => videoInputRef.current && videoInputRef.current.click();
-
-  const reEditMessage = (msg) => {
-    if (!msg || !msg.__originalText) return;
-    setText(msg.__originalText);
-    requestAnimationFrame(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        const len = inputRef.current.value.length;
-        try { inputRef.current.setSelectionRange(len, len); } catch {}
-      }
-    });
-  };
-
-  const gotoConversation = (id) => {
-    if (!id || String(id) === String(otherId)) return;
-    navigate(`/conversation/${id}`);
-  };
-  const openProfile = (uid) => {
-    if (!uid) return;
-    navigate(`/selfspace?userId=${uid}`);
-  };
-
-  // 新增/修正：把 /files/... 指到后端来源（避免打到前端域）
-  const toAbsUrl = (u) => {
-    if (!u) return '';
-    if (/^https?:\/\//i.test(u)) return u;
-    // 后端默认提供静态资源前缀 /files/...，开发环境前后端分离时需指向后端端口
-    const isFiles = u.startsWith('/files/');
-    if (isFiles) {
-      // 简单推断后端来源：同域但改端口为 8080
-      const loc = window.location;
-      const backendOrigin = `${loc.protocol}//${loc.hostname}:8080`;
-      return backendOrigin + u;
-    }
-    // 其他相对路径维持原样（走当前站点/代理）
-    try {
-      return new URL(u, window.location.origin).toString();
-    } catch {
-      return u;
-    }
-  };
-
-  // 右键菜单：打开/关闭
-  const openContextMenu = (e, msg) => {
-    e.preventDefault();
-    setMenu({ visible: true, x: e.clientX, y: e.clientY, msg });
-  };
-  const closeContextMenu = () => setMenu(m => ({ ...m, visible: false, msg: null }));
-  useEffect(() => {
-    const onDocClick = () => closeContextMenu();
-    const onEsc = (e) => { if (e.key === 'Escape') closeContextMenu(); };
-    const onScroll = () => closeContextMenu();
-    document.addEventListener('click', onDocClick);
-    document.addEventListener('keydown', onEsc);
-    document.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    return () => {
-      document.removeEventListener('click', onDocClick);
-      document.removeEventListener('keydown', onEsc);
-      document.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, []);
-
-  // 撤回与删除调用
-  const recallMessage = async (messageId) => {
-    closeContextMenu();
-    if (!messageId) return;
-    try {
-      const res = await fetch('/api/messages/recall', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-        body: JSON.stringify({ messageId })
-      });
-      const j = await res.json().catch(() => null);
-      if (j && (j.code === 200 || j.status === 200)) {
-        // 记录到本地集合，并立即乐观置为撤回
-        recalledLocalRef.current.add(normId(messageId));
-        setViewRecords(prev => prev.map(r => (r && normId(r.id) === normId(messageId) ? { ...r, recalled: true } : r)));
-        refreshView(); // 再拉一次视图
-      } else {
-        alert((j && (j.msg || j.message)) || '撤回失败');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('网络错误');
-    }
-  };
-
-  const deleteMessage = async (messageId) => {
-    closeContextMenu();
-    if (!messageId) return;
-    try {
-      const res = await fetch('/api/messages/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
-        body: JSON.stringify({ messageId })
-      });
-      const j = await res.json().catch(() => null);
-      if (j && (j.code === 200 || j.status === 200)) {
-        // 乐观更新：从当前用户视图移除
-        setViewRecords(prev => prev.filter(r => r && r.id !== messageId));
-        refreshView();
-      } else {
-        alert((j && (j.msg || j.message)) || '删除失败');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('网络错误');
-    }
-  };
-
-  const startResize = (e) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startHeight = inputHeight;
-    const anchorMessagesBottom = () => {
-      const el = rightScrollRef.current;
-      if (!el) return;
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight - el.clientHeight;
-      });
-    };
-    const onMove = (mv) => {
-      const delta = startY - mv.clientY; // 向上拖动增加高度
-      const newHeight = Math.min(240, Math.max(56, startHeight + delta));
-      if (newHeight !== inputHeight) {
-        setInputHeight(newHeight);
-        anchorMessagesBottom();
-      }
-    };
-    const onUp = () => {
-      anchorMessagesBottom();
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  };
-
-// 监听全局私信事件（由 BannerNavbar 派发的 pm-event），即时刷新当前会话
-  useEffect(() => {
-    if (!userId) return;
-
-    const onPm = (ev) => {
-      const data = ev?.detail || {};
-      const me = Number(userId);
-      const partnerId = String(me === Number(data.receiverId) ? data.senderId : data.receiverId);
-
-      // 无论来自谁，都刷新左侧列表（红点等）
-      fetch('/api/messages/conversation/list', { headers: { 'X-User-Id': userId } })
-        .then(r => r.json())
-        .then(j => { if (j && j.code === 200 && j.data?.list) setConversations(j.data.list); })
-        .catch(() => {});
-
-      // 当前会话：刷新视图 + 拉详细消息，避免接收端“空白来信”
-      if (String(partnerId) === String(otherId)) {
-        refreshView();
-        fetch(`/api/messages/conversation/${otherId}`, { headers: { 'X-User-Id': userId } })
-          .then(r => r.json())
-          .then(j => {
-            if (j && j.code === 200 && j.data?.list) {
-              setMessages(prev => mergeMessages(prev, j.data.list));
-              // 不在此处滚动或累加提示，交给 viewRecords 的 effect 统一处理
+        const pushIfNew = (m) => {
+            const k = keyOf(m);
+            if (!k) return;
+            if (!seen.has(k)) {
+                seen.set(k, true);
+                mergedArr.push(m);
             }
-          })
-          .catch(() => {});
-        // 我在此会话，立刻清零未读
-        markReadCurrent();
-      }
+        };
+
+        (oldList || []).forEach(pushIfNew);
+        (newList || []).forEach(pushIfNew);
+
+        mergedArr.sort((a, b) => {
+            const ta = a && a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tb = b && b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return ta - tb;
+        });
+
+        return mergedArr;
     };
 
-    window.addEventListener('pm-event', onPm);
-    return () => window.removeEventListener('pm-event', onPm);
-  }, [userId, otherId, refreshView, markReadCurrent]);
+    const markReadCurrent = useCallback(() => {
+        if (!userId || !otherId) return;
+        fetch(`/api/messages/conversation/${otherId}/read`, {
+            method: 'POST',
+            headers: { 'X-User-Id': userId }
+        })
+            .then(() => {
+                setConversations(prev =>
+                    (prev || []).map(x =>
+                        String(x.otherId) === String(otherId) ? { ...x, unreadCount: 0 } : x
+                    )
+                );
+                try {
+                    window.dispatchEvent(new Event('pm-unread-refresh'));
+                } catch (err) {
+                    // ignore
+                    console.warn('pm-unread-refresh dispatch failed', err);
+                }
+            })
+            .catch((err) => {
+                console.warn('markReadCurrent failed', err);
+            });
+    }, [userId, otherId]);
 
-  // 点击“新消息”按钮：回到底部并清空提示
-  const jumpToLatest = () => {
-    const el = rightScrollRef.current;
-    if (!el) return;
-    autoScrollEnabledRef.current = true;
-    el.scrollTop = el.scrollHeight;
-    // 到底部时将当前视图ID标记为已看到
-    seenIdsRef.current = new Set((viewRecords || []).map(r => r?.id).filter(id => id != null));
-    const maxTime = (viewRecords || []).reduce((acc, r) => {
-      const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
-      return t > acc ? t : acc;
-    }, 0);
-    lastSeenMaxTimeRef.current = maxTime;
-    setNewTip({ visible: false, count: 0 });
-  };
+    /** ---------------- Block API helpers ---------------- */
 
-  return (
-    <div className="conversation-detail-page">
-      <BannerNavbar />
-      <div
-        className="conversation-detail-container two-columns"
-        style={{ '--input-height': `${inputHeight}px` }}  // 让 CSS 使用当前高度
-      >
-        {/* 左侧：会话用户栏（头像 + 昵称），可滚动 */}
-        <aside className="conversation-sidebar" ref={leftScrollRef} aria-label="会话列表">
-          {conversations.map(c => (
-            <button
-              key={c.otherId}
-              className={`conversation-sidebar-item${String(c.otherId) === String(otherId) ? ' active' : ''}`}
-              title={c.nickname || ''}
-              onClick={() => gotoConversation(c.otherId)}
-            >
-              <img
-                src={c.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
-                alt="avatar"
-                className="conversation-sidebar-avatar"
-                onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
-              />
-              <span className="conversation-sidebar-name">{c.nickname || `用户${c.otherId}`}</span>
-              {c.unreadCount > 0 && (
-                <span className="conversation-sidebar-badge" title={`未读 ${c.unreadCount}`}>
-                  {c.unreadCount > 99 ? '99+' : c.unreadCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </aside>
+    const checkBlockStatus = async (targetId) => {
+        if (!userId || !targetId) return false;
+        try {
+            const res = await fetch(`/api/block/status/${targetId}`, {
+                headers: { 'X-User-Id': userId }
+            });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200) return !!j.data;
+        } catch (err) {
+            console.warn('checkBlockStatus failed', err);
+        }
+        return false;
+    };
 
-        {/* 右侧：会话消息栏，仅自身滚动 */}
-        <div
-          className="conversation-detail-list"
-          ref={rightScrollRef}
-          style={{ '--input-height': inputHeight + 'px' }}  
-        >
-          {finalMessages.map(msg => {
-            const isSelf = msg.senderId === Number(userId);
-            const recalled = !!msg.__recalled;
-
-            if (recalled) {
-              // 撤回提示：发送方显示“重新编辑”，双方都显示小×删除
-              return (
-                <div className="conversation-detail-recall" key={msg.id}>
-                  <span className="txt">{isSelf ? '你撤回了一条消息' : '对方撤回了一条消息'}</span>
-                  {isSelf && msg.__originalText && (
-                    <button
-                      type="button"
-                      className="reedit"
-                      onClick={() => reEditMessage(msg)}
-                      title="重新编辑并发送"
-                    >
-                      重新编辑
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="recall-close"
-                    onClick={() => deleteMessage(msg.id)}
-                    title="删除这条记录"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
+    const toggleBlockUser = async (targetId) => {
+        if (!userId || !targetId) return null;
+        try {
+            const res = await fetch(`/api/block/toggle/${targetId}`, {
+                method: 'POST',
+                headers: { 'X-User-Id': userId }
+            });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200) {
+                // update local conversation entry if present
+                setConversations(prev => {
+                    if (!Array.isArray(prev)) return prev;
+                    return prev.map(c => c && String(c.otherId) === String(targetId)
+                        ? { ...c, blocked: j.data === true }
+                        : c
+                    );
+                });
+                return !!j.data;
+            } else {
+                alert((j && (j.msg || j.message)) || '操作失败');
             }
+        } catch (err) {
+            console.error('toggleBlockUser failed', err);
+            alert('网络错误');
+        }
+        return null;
+    };
 
-            return (
-              <div
-                key={msg.id}
-                className={`conversation-detail-msg${isSelf ? ' self' : ''}`}
-                onContextMenu={(e) => openContextMenu(e, msg)}
-                title="右键可撤回/删除"
-              >
-                <div className="conversation-detail-msg-meta">
-                  <img
-                    src={msg.senderAvatarUrl || otherInfo.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
-                    alt="avatar"
-                    className={`conversation-detail-msg-avatar${!isSelf ? ' clickable' : ''}`}
-                    title={!isSelf ? '查看主页' : undefined}   // ← 新增：悬停提示
-                    onClick={!isSelf ? () => openProfile(msg.senderId) : undefined}
-                    onError={(e) => { e.target.onerror = null; e.target.src = '/imgs/loginandwelcomepanel/1.png'; }}
-                  />
-                  <span className="conversation-detail-msg-nickname">
-                    {msg.senderNickname || (isSelf ? '你' : otherInfo.nickname)}
-                  </span>
-                </div>
+    /** ---------------- 分页获取消息（带本地缓存） ---------------- */
 
-                <div className="conversation-detail-msgtext">
-                  {msg?.type === 'IMAGE' && msg?.mediaUrl ? (
-                    <img
-                      className="conversation-detail-msgmedia"
-                      src={toAbsUrl(msg.mediaUrl)}
-                      alt="image"
-                      onError={(e) => { e.target.onerror = null; e.target.src = ''; }}
-                    />
-                  ) : msg?.type === 'VIDEO' && msg?.mediaUrl ? (
-                    <video className="conversation-detail-msgmedia" src={toAbsUrl(msg.mediaUrl)} controls />
-                  ) : (
-                    msg?.text || (msg?.type === 'IMAGE' ? '[图片]' : msg?.type === 'VIDEO' ? '[视频]' : '')
-                  )}
-                </div>
+    const fetchMessages = async (pageNum) => {
+        if (!userId || !otherId) return;
+        try {
+            if (pageNum > 0) setIsLoadingHistory(true);
 
-                <div className="conversation-detail-msgtime">
-                  {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ''}
-                </div>
-              </div>
+            const res = await fetch(
+                `/api/messages/conversation/${otherId}?page=${pageNum}&size=20`,
+                {
+                    headers: { 'X-User-Id': userId }
+                }
             );
-          })}
+            const j = await res.json();
 
-          {/* 右下角“新消息”提示按钮 */}
-          {newTip.visible && newTip.count > 0 && (
-            <button
-              type="button"
-              className="conversation-detail-sendbtn"
-              style={{
-                position: 'sticky',
-                float: 'right',
-                bottom: '12px',
-                right: '12px',
-                marginTop: '12px',
-                zIndex: 10
-              }}
-              onClick={jumpToLatest}
-              title="回到底部查看最新消息"
-            >
-              {newTip.count} 条新消息
-            </button>
-          )}
-        </div>
+            if (j && j.code === 200 && j.data) {
+                const newMsgs = j.data.list || [];
 
-        {/* 表单：输入栏新结构（图标 + 可拉伸 textarea + 发送按钮） */}
-        <form
-          className="conversation-detail-form"
-          onSubmit={handleSend}
-          style={{ '--input-height': inputHeight + 'px' }}   
-        >
-          <div className="conversation-inputbox">
+                // 永远在现有 messages 基础上“补齐”，不再有覆盖逻辑
+                setMessages(prev => {
+                    const existingIds = new Set((prev || []).map(m => m.id));
+                    const filteredNew = (newMsgs || []).filter(m => !existingIds.has(m.id));
+                    // 服务器分页是“越大 page 越早的历史消息”，所以老消息应该加在前面
+                    const merged = [...filteredNew, ...(prev || [])];
+                    return merged.sort((a, b) => {
+                        const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+                        const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+                        return ta - tb;
+                    });
+                });
+
+                // 写入 IndexedDB 缓存（最多 1000 条）
+                cacheConversationMessages(userId, otherId, newMsgs, 1000)
+                    .then(() => {
+                        // 方便你在 F12 里看到缓存写入情况
+                        console.log(
+                            '[PM] cacheConversationMessages written page',
+                            pageNum,
+                            'count=',
+                            newMsgs.length
+                        );
+                    })
+                    .catch(() => {});
+
+                if (newMsgs.length < 20) {
+                    setHasMore(false);
+                }
+            }
+        } catch (e) {
+            console.error('Fetch messages failed', e);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    /** ---------------- 视图刷新 ---------------- */
+
+    const refreshView = useCallback(() => {
+        if (!userId || !otherId) return;
+        fetch(`/api/messages/conversation/view/${otherId}?page=0&size=500`, {
+            headers: { 'X-User-Id': userId }
+        })
+            .then(r => r.json())
+            .then(j => {
+                if (j && j.code === 200 && j.data && Array.isArray(j.data.records || j.data.list)) {
+                    const list = j.data.records || j.data.list;
+                    const withLocal = list.map(r =>
+                        recalledLocalRef.current.has(normId(r.id))
+                            ? { ...r, recalled: true }
+                            : r
+                    );
+                    setViewRecords(withLocal);
+                }
+            })
+            .catch((err) => {
+                console.warn('refreshView failed', err);
+            });
+    }, [userId, otherId]);
+
+    /** ---------------- 初始与切换会话：先用本地缓存填充 ---------------- */
+
+    useEffect(() => {
+        if (!userId || !otherId) return;
+
+        let cancelled = false;
+
+        (async () => {
+            // 1. 先从 IndexedDB 预加载最近 N 条消息
+            const cached = await preloadConversationMessages(userId, otherId, 1000);
+            if (cancelled) return;
+
+            console.log(
+                '[PM] preloadConversationMessages from IndexedDB:',
+                cached.length,
+                'records'
+            );
+
+            if (cached && cached.length > 0) {
+                setMessages(cached);
+            } else {
+                setMessages([]); // 确保状态清空
+            }
+
+            // 2. 再从服务器拉取 page=0，作为“增量补充”，不再覆盖本地缓存
+            setPage(0);
+            setHasMore(true);
+            fetchMessages(0);
+
+            // 3. 标记当前会话为已读
+            markReadCurrent();
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [userId, otherId, markReadCurrent]);
+
+    useEffect(() => {
+        markReadCurrent();
+    }, [markReadCurrent]);
+
+    /** ---------------- 左侧会话摘要：先本地、再远端 ---------------- */
+
+    useEffect(() => {
+        if (!userId) return;
+
+        (async () => {
+            const localList = await loadCachedConversationSummaries();
+            if (localList && localList.length > 0) {
+                setConversations(
+                    localList.map(c => ({
+                        otherId: c.otherId,
+                        nickname: c.nickname,
+                        avatarUrl: c.avatarUrl,
+                        lastMessage: c.lastMessage,
+                        lastAt: c.lastAt,
+                        unreadCount: c.unreadCount || 0,
+                        blocked: false // default, updated later when user queries or toggles
+                    }))
+                );
+            }
+        })();
+
+        const loadList = async () => {
+            try {
+                const r = await fetch('/api/messages/conversation/list', {
+                    headers: { 'X-User-Id': userId }
+                });
+                const j = await r.json();
+                if (j && j.code === 200 && j.data && Array.isArray(j.data.list)) {
+                    let list = j.data.list;
+
+                    const exists = list.some(x => String(x.otherId) === String(otherId));
+                    if (!exists && otherId) {
+                        let profileNick = '';
+                        let profileAvatar = '';
+                        try {
+                            const pr = await fetch(`/api/user/profile/${otherId}`);
+                            const pj = await pr.json();
+                            if (pj && pj.code === 200 && pj.data) {
+                                profileNick = pj.data.nickname || '';
+                                profileAvatar = pj.data.avatarUrl || '';
+                            }
+                        } catch (err) {
+                            console.warn('load profile failed', err);
+                        }
+
+                        list = [
+                            {
+                                otherId: Number(otherId),
+                                nickname: profileNick || otherInfo?.nickname || '',
+                                avatarUrl: profileAvatar || otherInfo?.avatarUrl || '',
+                                lastMessage: '',
+                                lastAt: null,
+                                unreadCount: 0
+                            },
+                            ...list
+                        ];
+                    }
+
+                    list = await Promise.all(
+                        list.map(async x => {
+                            if (!x || String(x.otherId) !== String(otherId)) {
+                                // keep existing entries but add blocked=false by default
+                                return { ...x, blocked: false };
+                            }
+                            if (x.nickname && x.avatarUrl) return { ...x, blocked: false };
+                            try {
+                                const pr = await fetch(`/api/user/profile/${x.otherId}`);
+                                const pj = await pr.json();
+                                if (pj && pj.code === 200 && pj.data) {
+                                    return {
+                                        ...x,
+                                        nickname: x.nickname || pj.data.nickname || '',
+                                        avatarUrl: x.avatarUrl || pj.data.avatarUrl || '',
+                                        blocked: false
+                                    };
+                                }
+                            } catch (err) {
+                                console.warn('补充 profile 失败', err);
+                            }
+                            return {
+                                ...x,
+                                nickname: x.nickname || otherInfo?.nickname || '',
+                                avatarUrl: x.avatarUrl || otherInfo?.avatarUrl || '',
+                                blocked: false
+                            };
+                        })
+                    );
+
+                    setConversations(list);
+                    cacheConversationSummaries(userId, list).catch(() => {});
+                }
+            } catch (err) {
+                console.warn('load conversation list failed', err);
+            }
+        };
+
+        loadList();
+    }, [userId, otherId, otherInfo]);
+
+    // close sidebar menu when clicking anywhere
+    useEffect(() => {
+        const onDocClick = () => setSidebarMenu({ visible: false, x: 0, y: 0, user: null, blocked: false });
+        document.addEventListener('click', onDocClick);
+        return () => document.removeEventListener('click', onDocClick);
+    }, []);
+
+    // 视图加载
+    useEffect(() => {
+        refreshView();
+    }, [refreshView]);
+
+    /** ---------------- 视图与消息合成 finalMessages ---------------- */
+
+    const messagesById = useMemo(() => {
+        const map = new Map();
+        (messages || []).forEach(m => {
+            if (m && m.id != null) map.set(m.id, m);
+        });
+        return map;
+    }, [messages]);
+
+    const finalMessages = useMemo(() => {
+        return (viewRecords || []).map(v => {
+            const m = v?.id != null ? messagesById.get(v.id) : null;
+            const merged = m
+                ? { ...m }
+                : {
+                    id: v.id,
+                    senderId: v.senderId,
+                    receiverId: v.receiverId,
+                    createdAt: v.createdAt,
+                    text: v.displayText || '',
+                    type: null,
+                    mediaUrl: null,
+                    senderNickname: (m && m.senderNickname) || '',
+                    receiverNickname: (m && m.receiverNickname) || '',
+                    senderAvatarUrl: (m && m.senderAvatarUrl) || '',
+                    receiverAvatarUrl: (m && m.receiverAvatarUrl) || ''
+                };
+            const recalledFlag =
+                v.recalled === true || v.recalled === 1 || v.recalled === 'true';
+            merged.__recalled = recalledFlag;
+            merged.__displayText = v.displayText || '';
+            if (merged.__recalled) {
+                if (m && m.text) merged.__originalText = m.text;
+            }
+            return merged;
+        });
+    }, [viewRecords, messagesById]);
+
+    /** ---------------- 通过消息推断对方信息 ---------------- */
+
+    useEffect(() => {
+        if (!finalMessages || finalMessages.length === 0) return;
+        for (let m of finalMessages) {
+            if (m.senderId !== Number(userId)) {
+                setOtherInfo({
+                    nickname: m.senderNickname || '',
+                    avatarUrl: m.senderAvatarUrl || ''
+                });
+                return;
+            }
+            if (m.receiverId !== Number(userId)) {
+                setOtherInfo({
+                    nickname: m.receiverNickname || '',
+                    avatarUrl: m.receiverAvatarUrl || ''
+                });
+                return;
+            }
+        }
+    }, [finalMessages, userId]);
+
+    /** ---------------- 滚动监听/自动滚动/分页加载 ---------------- */
+
+    useEffect(() => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+        const onScroll = () => {
+            const near = isNearBottom(el);
+            userScrollingUpRef.current = !near;
+            autoScrollEnabledRef.current = near;
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        autoScrollEnabledRef.current = isNearBottom(el);
+        userScrollingUpRef.current = !autoScrollEnabledRef.current;
+        return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    const handleScroll = (e) => {
+        const el = e.target;
+
+        const isBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+        autoScrollEnabledRef.current = isBottom;
+
+        if (el.scrollTop === 0 && hasMore && !isLoadingHistory && messages.length > 0) {
+            previousScrollHeightRef.current = el.scrollHeight;
+            const nextPage = page + 1;
+            setPage(nextPage);
+            fetchMessages(nextPage);
+        }
+    };
+
+    useLayoutEffect(() => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+
+        if (isLoadingHistory === false && previousScrollHeightRef.current > 0) {
+            const heightDiff = el.scrollHeight - previousScrollHeightRef.current;
+            el.scrollTop = heightDiff;
+            previousScrollHeightRef.current = 0;
+        } else {
+            if (autoScrollEnabledRef.current) {
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+    }, [messages, isLoadingHistory]);
+
+    useEffect(() => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+        if (autoScrollEnabledRef.current || isNearBottom(el)) {
+            el.scrollTop = el.scrollHeight;
+        }
+        const imgs = Array.from(
+            el.querySelectorAll('img.conversation-detail-msgmedia')
+        );
+        const vids = Array.from(
+            el.querySelectorAll('video.conversation-detail-msgmedia')
+        );
+        const onLoaded = () => {
+            if (autoScrollEnabledRef.current || isNearBottom(el)) {
+                el.scrollTop = el.scrollHeight;
+            }
+        };
+        imgs.forEach(img => {
+            img.addEventListener('load', onLoaded);
+        });
+        vids.forEach(v => {
+            v.addEventListener('loadedmetadata', onLoaded);
+            v.addEventListener('loadeddata', onLoaded);
+        });
+        return () => {
+            imgs.forEach(img => {
+                img.removeEventListener('load', onLoaded);
+            });
+            vids.forEach(v => {
+                v.removeEventListener('loadedmetadata', onLoaded);
+                v.removeEventListener('loadeddata', onLoaded);
+            });
+        };
+    }, [finalMessages]);
+
+    useEffect(() => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+        const raf = requestAnimationFrame(() => {
+            autoScrollEnabledRef.current = true;
+            el.scrollTop = el.scrollHeight;
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [otherId]);
+
+    useEffect(() => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+
+        const near = isNearBottom(el);
+        const currentIds = new Set(
+            (viewRecords || [])
+                .map(r => r?.id)
+                .filter(id => id != null)
+        );
+
+        if (autoScrollEnabledRef.current || near) {
+            requestAnimationFrame(() => {
+                el.scrollTop = el.scrollHeight;
+            });
+            seenIdsRef.current = currentIds;
+            const maxTime = (viewRecords || []).reduce((acc, r) => {
+                const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
+                return t > acc ? t : acc;
+            }, 0);
+            lastSeenMaxTimeRef.current = maxTime;
+            setNewTip({ visible: false, count: 0 });
+        } else {
+            const seen = seenIdsRef.current || new Set();
+            let inc = 0;
+            currentIds.forEach(id => {
+                if (!seen.has(id)) inc += 1;
+            });
+            if (inc > 0) {
+                setNewTip({ visible: true, count: inc });
+            }
+        }
+    }, [viewRecords]);
+
+    /** ---------------- 发送文本消息（成功后写缓存） ---------------- */
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        const body = { text };
+        const res = await fetch(`/api/messages/text/${otherId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-User-Id': userId
+            },
+            body: JSON.stringify(body)
+        });
+        setText('');
+        try {
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200 && j.data) {
+                const msg = j.data;
+                setMessages(prev => mergeMessages(prev, [msg]));
+                cacheConversationMessages(userId, otherId, [msg], 1000)
+                    .then(() => console.log('[PM] cache after send text, id=', msg.id))
+                    .catch(() => {});
+            } else {
+                // show server message (for blocked or other reasons)
+                alert((j && (j.msg || j.message)) || '发送失败');
+            }
+        } catch (err) {
+            console.warn('parse send text response failed', err);
+            alert('发送失败');
+        }
+        autoScrollEnabledRef.current = true;
+        refreshView();
+    };
+
+    const onInputKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const fakeEvent = { preventDefault: () => {} };
+            handleSend(fakeEvent);
+        }
+    };
+
+    /** ---------------- 带进度上传 & 发送媒体 ---------------- */
+
+    const uploadFile = (file) => {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const form = new FormData();
+            form.append('file', file);
+            xhr.open('POST', '/api/messages/upload');
+            if (userId) xhr.setRequestHeader('X-User-Id', userId);
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const p = Math.round((e.loaded / e.total) * 100);
+                    setUploadProgress(p);
+                }
+            };
+            xhr.onload = () => {
+                try {
+                    const res = JSON.parse(xhr.responseText || '{}');
+                    if (res && res.code === 200 && res.data) {
+                        resolve(res.data);
+                    } else {
+                        reject(new Error(res?.message || '上传失败'));
+                    }
+                } catch (err) {
+                    reject(new Error('上传响应解析失败'));
+                }
+            };
+            xhr.onerror = () => reject(new Error('网络错误，上传失败'));
+            xhr.send(form);
+        });
+    };
+
+    const handleFileChosen = async (e, type) => {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+
+        setUploading(true);
+        setUploadProgress(0);
+        try {
+            const url = await uploadFile(file);
+
+            const body = { type, mediaUrl: url, text: '' };
+            const res = await fetch(`/api/messages/media/${otherId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+                body: JSON.stringify(body)
+            });
+
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200 && j.data) {
+                const dto = j.data;
+
+                setMessages(prev => {
+                    const next = Array.isArray(prev) ? prev.slice() : [];
+                    next.push({
+                        id: dto.id,
+                        senderId: dto.senderId,
+                        receiverId: dto.receiverId,
+                        text: dto.text || '',
+                        mediaUrl: dto.mediaUrl || '',
+                        type: dto.type || type,
+                        createdAt: dto.createdAt,
+                        senderNickname: dto.senderNickname || '你',
+                        senderAvatarUrl: dto.senderAvatarUrl || (otherInfo?.avatarUrl || ''),
+                        receiverNickname: dto.receiverNickname || otherInfo?.nickname || '',
+                        receiverAvatarUrl: dto.receiverAvatarUrl || (otherInfo?.avatarUrl || '')
+                    });
+                    next.sort((a, b) => {
+                        const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+                        const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+                        return ta - tb;
+                    });
+                    return next;
+                });
+
+                setViewRecords(prev => {
+                    const next = Array.isArray(prev) ? prev.slice() : [];
+                    next.push({
+                        id: dto.id,
+                        senderId: dto.senderId,
+                        receiverId: dto.receiverId,
+                        createdAt: dto.createdAt,
+                        recalled: false,
+                        displayText: dto.text || ''
+                    });
+                    next.sort((a, b) => {
+                        const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+                        const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+                        return ta - tb;
+                    });
+                    return next;
+                });
+
+                cacheConversationMessages(userId, otherId, [dto], 1000)
+                    .then(() => console.log('[PM] cache after send media, id=', dto.id))
+                    .catch(() => {});
+
+                requestAnimationFrame(() => {
+                    const el = rightScrollRef.current;
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+            } else {
+                alert((j && (j.message || j.msg)) || '发送失败');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('上传或发送失败');
+        } finally {
+            setUploading(false);
+            setUploadProgress(0);
+            refreshView();
+        }
+    };
+
+    const onPickImageClick = () =>
+        imageInputRef.current && imageInputRef.current.click();
+    const onPickVideoClick = () =>
+        videoInputRef.current && videoInputRef.current.click();
+
+    /** ---------------- 撤回/删除/右键菜单 ---------------- */
+
+    const reEditMessage = (msg) => {
+        if (!msg || !msg.__originalText) return;
+        setText(msg.__originalText);
+        requestAnimationFrame(() => {
+            if (inputRef.current) {
+                inputRef.current.focus();
+                const len = inputRef.current.value.length;
+                try {
+                    inputRef.current.setSelectionRange(len, len);
+                } catch (err) {
+                    console.warn('setSelectionRange failed', err);
+                }
+            }
+        });
+    };
+
+    const openContextMenu = (e, msg) => {
+        e.preventDefault();
+        setMenu({ visible: true, x: e.clientX, y: e.clientY, msg });
+    };
+
+    const closeContextMenu = () =>
+        setMenu(m => ({ ...m, visible: false, msg: null }));
+
+    useEffect(() => {
+        const onDocClick = () => closeContextMenu();
+        const onEsc = (ev) => {
+            if (ev.key === 'Escape') closeContextMenu();
+        };
+        const onScrollAny = () => closeContextMenu();
+        document.addEventListener('click', onDocClick);
+        document.addEventListener('keydown', onEsc);
+        document.addEventListener('scroll', onScrollAny, true);
+        window.addEventListener('resize', onScrollAny);
+        return () => {
+            document.removeEventListener('click', onDocClick);
+            document.removeEventListener('keydown', onEsc);
+            document.removeEventListener('scroll', onScrollAny, true);
+            window.removeEventListener('resize', onScrollAny);
+        };
+    }, []);
+
+    const recallMessage = async (messageId) => {
+        closeContextMenu();
+        if (!messageId) return;
+        try {
+            const res = await fetch('/api/messages/recall', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Id': userId
+                },
+                body: JSON.stringify({ messageId })
+            });
+            const j = await res.json().catch(() => null);
+            if (j && (j.code === 200 || j.status === 200)) {
+                recalledLocalRef.current.add(normId(messageId));
+                setViewRecords(prev =>
+                    prev.map(r =>
+                        r && normId(r.id) === normId(messageId)
+                            ? { ...r, recalled: true }
+                            : r
+                    )
+                );
+                refreshView();
+            } else {
+                alert((j && (j.msg || j.message)) || '撤回失败');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('网络错误');
+        }
+    };
+
+    const deleteMessage = async (messageId) => {
+        closeContextMenu();
+        if (!messageId) return;
+        try {
+            const res = await fetch('/api/messages/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Id': userId
+                },
+                body: JSON.stringify({ messageId })
+            });
+            const j = await res.json().catch(() => null);
+            if (j && (j.code === 200 || j.status === 200)) {
+                setViewRecords(prev => prev.filter(r => r && r.id !== messageId));
+                refreshView();
+            } else {
+                alert((j && (j.msg || j.message)) || '删除失败');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('网络错误');
+        }
+    };
+
+    /** ---------------- 头像 / 会话跳转 ---------------- */
+
+    const gotoConversation = (id) => {
+        if (!id || String(id) === String(otherId)) return;
+        navigate(`/conversation/${id}`);
+    };
+
+    const openProfile = (uid) => {
+        if (!uid) return;
+        navigate(`/selfspace?userId=${uid}`);
+    };
+
+    /** ---------------- URL 处理 ---------------- */
+
+    const toAbsUrl = (u) => {
+        if (!u) return '';
+        if (/^https?:\/\//i.test(u)) return u;
+        const isFiles = u.startsWith('/files/');
+        if (isFiles) {
+            const loc = window.location;
+            const backendOrigin = `${loc.protocol}//${loc.hostname}:8080`;
+            return backendOrigin + u;
+        }
+        try {
+            return new URL(u, window.location.origin).toString();
+        } catch (err) {
+            console.warn('toAbsUrl failed', err);
+            return u;
+        }
+    };
+
+    /** ---------------- 输入框高度拖拽 ---------------- */
+
+    const startResize = (e) => {
+        e.preventDefault();
+        const startY = e.clientY;
+        const startHeight = inputHeight;
+        const anchorMessagesBottom = () => {
+            const el = rightScrollRef.current;
+            if (!el) return;
+            requestAnimationFrame(() => {
+                el.scrollTop = el.scrollHeight - el.clientHeight;
+            });
+        };
+        const onMove = (mv) => {
+            const delta = startY - mv.clientY;
+            const newHeight = Math.min(240, Math.max(56, startHeight + delta));
+            if (newHeight !== inputHeight) {
+                setInputHeight(newHeight);
+                anchorMessagesBottom();
+            }
+        };
+        const onUp = () => {
+            anchorMessagesBottom();
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
+    /** ---------------- SSE/轮询 & 全局事件 ---------------- */
+
+    useEffect(() => {
+        if (!otherId || !userId) return;
+        let es = null;
+        let pollTimer = null;
+        const subscribeUrl = `/api/messages/subscribe/${otherId}?userId=${encodeURIComponent(
+            userId
+        )}&_=${Date.now()}`;
+        try {
+            es = new EventSource(subscribeUrl);
+        } catch (err) {
+            console.warn('EventSource init failed, fallback to polling', err);
+            es = null;
+        }
+
+        const onAny = () => {
+            refreshView();
+            try {
+                window.dispatchEvent(new Event('pm-unread-refresh'));
+            } catch (err) {
+                console.warn('pm-unread-refresh dispatch failed', err);
+            }
+        };
+
+        if (es) {
+            es.addEventListener('init', onAny);
+            es.addEventListener('update', onAny);
+            es.onerror = () => {
+                if (es) {
+                    try {
+                        es.close();
+                    } catch (err) {
+                        console.warn('EventSource close failed', err);
+                    }
+                    es = null;
+                }
+                pollTimer = setInterval(() => {
+                    refreshView();
+                }, 3000);
+            };
+        } else {
+            pollTimer = setInterval(() => {
+                refreshView();
+            }, 3000);
+        }
+
+        refreshView();
+
+        return () => {
+            if (es) {
+                try {
+                    es.removeEventListener('init', onAny);
+                    es.removeEventListener('update', onAny);
+                    es.close();
+                } catch (err) {
+                    console.warn('EventSource cleanup failed', err);
+                }
+            }
+            if (pollTimer) clearInterval(pollTimer);
+        };
+    }, [otherId, userId, refreshView]);
+
+    useEffect(() => {
+        if (!userId) return;
+
+        const onPm = (ev) => {
+            const data = ev?.detail || {};
+            const me = Number(userId);
+            const partnerId = String(
+                me === Number(data.receiverId) ? data.senderId : data.receiverId
+            );
+
+            fetch('/api/messages/conversation/list', {
+                headers: { 'X-User-Id': userId }
+            })
+                .then(r => r.json())
+                .then(j => {
+                    if (j && j.code === 200 && j.data?.list) {
+                        setConversations(j.data.list);
+                        cacheConversationSummaries(userId, j.data.list).catch(() => {});
+                    }
+                })
+                .catch((err) => {
+                    console.warn('pm-event load list failed', err);
+                });
+
+            if (String(partnerId) === String(otherId)) {
+                refreshView();
+                fetch(`/api/messages/conversation/${otherId}`, {
+                    headers: { 'X-User-Id': userId }
+                })
+                    .then(r => r.json())
+                    .then(j => {
+                        if (j && j.code === 200 && j.data?.list) {
+                            setMessages(prev => {
+                                const merged = mergeMessages(prev, j.data.list);
+                                return merged;
+                            });
+                            cacheConversationMessages(userId, otherId, j.data.list, 1000).catch(
+                                () => {}
+                            );
+                        }
+                    })
+                    .catch((err) => {
+                        console.warn('pm-event load messages failed', err);
+                    });
+                markReadCurrent();
+            }
+        };
+
+        window.addEventListener('pm-event', onPm);
+        return () => window.removeEventListener('pm-event', onPm);
+    }, [userId, otherId, refreshView, markReadCurrent]);
+
+    /** ---------------- “新消息”按钮 ---------------- */
+
+    const jumpToLatest = () => {
+        const el = rightScrollRef.current;
+        if (!el) return;
+        autoScrollEnabledRef.current = true;
+        el.scrollTop = el.scrollHeight;
+        seenIdsRef.current = new Set(
+            (viewRecords || [])
+                .map(r => r?.id)
+                .filter(id => id != null)
+        );
+        const maxTime = (viewRecords || []).reduce((acc, r) => {
+            const t = r?.createdAt ? new Date(r.createdAt).getTime() : 0;
+            return t > acc ? t : acc;
+        }, 0);
+        lastSeenMaxTimeRef.current = maxTime;
+        setNewTip({ visible: false, count: 0 });
+    };
+
+    /** ---------------- 渲染 ---------------- */
+
+    return (
+        <div className="conversation-detail-page">
+            <BannerNavbar />
             <div
-              className="conversation-inputbox-resize"
-              title="拖动上边界可加长输入框"
-              onMouseDown={startResize}
-            ></div>
+                className="conversation-detail-container two-columns"
+                style={{ '--input-height': `${inputHeight}px` }}
+            >
+                {/* 左侧会话列表 */}
+                <aside
+                    className="conversation-sidebar"
+                    ref={leftScrollRef}
+                    aria-label="会话列表"
+                >
+                    {conversations.map(c => (
+                        <button
+                            key={c.otherId}
+                            className={`conversation-sidebar-item${String(c.otherId) ===
+                            String(otherId)
+                                ? ' active'
+                                : ''}`}
+                            title={c.nickname || ''}
+                            onClick={() => gotoConversation(c.otherId)}
+                        >
+                            <img
+                                src={c.avatarUrl || '/imgs/loginandwelcomepanel/1.png'}
+                                alt="avatar"
+                                className="conversation-sidebar-avatar"
+                                onError={(ev) => {
+                                    const target = ev.target;
+                                    target.onerror = null;
+                                    target.src = '/imgs/loginandwelcomepanel/1.png';
+                                }}
+                                onContextMenu={async (e) => {
+                                    e.preventDefault();
+                                    // stop propagation to avoid outer click handlers
+                                    e.stopPropagation();
+                                    const blocked = await checkBlockStatus(c.otherId);
+                                    setSidebarMenu({
+                                        visible: true,
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        user: c,
+                                        blocked
+                                    });
+                                }}
+                            />
+                            <span className="conversation-sidebar-name">
+                                {c.nickname || `用户${c.otherId}`}
+                            </span>
+                            {c.unreadCount > 0 && (
+                                <span
+                                    className="conversation-sidebar-badge"
+                                    title={`未读 ${c.unreadCount}`}
+                                >
+                                    {c.unreadCount > 99 ? '99+' : c.unreadCount}
+                                </span>
+                            )}
+                            {/* optional blocked indicator */}
+                            {c.blocked && (
+                                <span className="conversation-sidebar-blocked" title="你已拉黑此用户">
+                                    已拉黑
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </aside>
 
-            <button
-              type="button"
-              className="icon-btn icon-image"
-              onClick={onPickImageClick}
-              title="发送图片"
-              disabled={uploading}
-            ></button>
-            <button
-              type="button"
-              className="icon-btn icon-video"
-              onClick={onPickVideoClick}
-              title="发送视频"
-              disabled={uploading}
-            ></button>
+                {/* 右侧消息区 */}
+                <div
+                    className="conversation-detail-list"
+                    ref={rightScrollRef}
+                    onScroll={handleScroll}
+                    style={{ '--input-height': inputHeight + 'px' }}
+                >
+                    {isLoadingHistory && (
+                        <div
+                            style={{
+                                textAlign: 'center',
+                                padding: '10px',
+                                color: '#999'
+                            }}
+                        >
+                            加载历史消息...
+                        </div>
+                    )}
 
-            <textarea
-              ref={inputRef}            
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onInputKeyDown}
-              placeholder="请输入消息内容..."
-              className="conversation-detail-input"
-              disabled={uploading}
-            />
-          </div>
-          <button type="submit" className="conversation-detail-sendbtn" disabled={uploading}>发送</button>
-          {/* 隐藏文件输入框 */}
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => handleFileChosen(e, 'IMAGE')}
-          />
-          <input
-            ref={videoInputRef}
-            type="file"
-            accept="video/*"
-            style={{ display: 'none' }}
-            onChange={(e) => handleFileChosen(e, 'VIDEO')}
-          />
-        </form>
+                    {finalMessages.map(msg => {
+                        const isSelf = msg.senderId === Number(userId);
+                        const recalled = !!msg.__recalled;
 
-        {/* 上传进度条 */}
-        {uploading && (
-          <div className="conversation-detail-uploadprogress" aria-live="polite">
-            <div className="bar" style={{ width: `${uploadProgress}%` }} />
-            <span className="pct">{uploadProgress}%</span>
-          </div>
-        )}
-      </div>
+                        if (recalled) {
+                            return (
+                                <div className="conversation-detail-recall" key={msg.id}>
+                                    <span className="txt">
+                                        {isSelf ? '你撤回了一条消息' : '对方撤回了一条消息'}
+                                    </span>
+                                    {isSelf && msg.__originalText && (
+                                        <button
+                                            type="button"
+                                            className="reedit"
+                                            onClick={() => reEditMessage(msg)}
+                                            title="重新编辑并发送"
+                                        >
+                                            重新编辑
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        className="recall-close"
+                                        onClick={() => deleteMessage(msg.id)}
+                                        title="删除这条记录"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            );
+                        }
 
-      {/* 右键菜单 */}
-      {menu.visible && menu.msg && (
-        <div className="msg-context-menu" style={{ left: menu.x, top: menu.y }}>
-          {(menu.msg.senderId === Number(userId))
-            && !menu.msg.__recalled
-            && Number.isFinite(new Date(menu.msg.createdAt).getTime())
-            && (Date.now() - new Date(menu.msg.createdAt).getTime() <= 2 * 60 * 1000) && (
-            <button onClick={() => recallMessage(menu.msg.id)}>撤回</button>
-          )}
-          <button onClick={() => deleteMessage(menu.msg.id)}>删除</button>
+                        return (
+                            <div
+                                key={msg.id}
+                                className={`conversation-detail-msg${isSelf ? ' self' : ''}`}
+                                onContextMenu={(e) => openContextMenu(e, msg)}
+                                title="右键可撤回/删除"
+                            >
+                                <div className="conversation-detail-msg-meta">
+                                    <img
+                                        src={
+                                            msg.senderAvatarUrl ||
+                                            otherInfo.avatarUrl ||
+                                            '/imgs/loginandwelcomepanel/1.png'
+                                        }
+                                        alt="avatar"
+                                        className={`conversation-detail-msg-avatar${
+                                            !isSelf ? ' clickable' : ''
+                                        }`}
+                                        title={!isSelf ? '查看主页' : undefined}
+                                        onClick={!isSelf ? () => openProfile(msg.senderId) : undefined}
+                                        onError={(ev) => {
+                                            const target = ev.target;
+                                            target.onerror = null;
+                                            target.src = '/imgs/loginandwelcomepanel/1.png';
+                                        }}
+                                    />
+                                    <span className="conversation-detail-msg-nickname">
+                                        {msg.senderNickname || (isSelf ? '你' : otherInfo.nickname)}
+                                    </span>
+                                </div>
+
+                                <div className="conversation-detail-msgtext">
+                                    {msg?.type === 'IMAGE' && msg?.mediaUrl ? (
+                                        <img
+                                            className="conversation-detail-msgmedia"
+                                            src={toAbsUrl(msg.mediaUrl)}
+                                            alt="image"
+                                            onError={(ev) => {
+                                                const target = ev.target;
+                                                target.onerror = null;
+                                                target.src = '';
+                                            }}
+                                        />
+                                    ) : msg?.type === 'VIDEO' && msg?.mediaUrl ? (
+                                        <video
+                                            className="conversation-detail-msgmedia"
+                                            src={toAbsUrl(msg.mediaUrl)}
+                                            controls
+                                        />
+                                    ) : (
+                                        msg?.text ||
+                                        (msg?.type === 'IMAGE'
+                                            ? '[图片]'
+                                            : msg?.type === 'VIDEO'
+                                                ? '[视频]'
+                                                : '')
+                                    )}
+                                </div>
+
+                                <div className="conversation-detail-msgtime">
+                                    {msg.createdAt
+                                        ? new Date(msg.createdAt).toLocaleString()
+                                        : ''}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {/* 右下角“新消息”提示按钮 */}
+                    {newTip.visible && newTip.count > 0 && (
+                        <button
+                            type="button"
+                            className="conversation-detail-sendbtn"
+                            style={{
+                                position: 'sticky',
+                                float: 'right',
+                                bottom: '12px',
+                                right: '12px',
+                                marginTop: '12px',
+                                zIndex: 10
+                            }}
+                            onClick={jumpToLatest}
+                            title="回到底部查看最新消息"
+                        >
+                            {newTip.count} 条新消息
+                        </button>
+                    )}
+                </div>
+
+                {/* 右侧输入区 */}
+                <form
+                    className="conversation-detail-form"
+                    onSubmit={handleSend}
+                    style={{ '--input-height': inputHeight + 'px' }}
+                >
+                    <div className="conversation-inputbox">
+                        <div
+                            className="conversation-inputbox-resize"
+                            title="拖动上边界可加长输入框"
+                            onMouseDown={startResize}
+                        ></div>
+
+                        <button
+                            type="button"
+                            className="icon-btn icon-image"
+                            onClick={onPickImageClick}
+                            title="发送图片"
+                            disabled={uploading}
+                        ></button>
+                        <button
+                            type="button"
+                            className="icon-btn icon-video"
+                            onClick={onPickVideoClick}
+                            title="发送视频"
+                            disabled={uploading}
+                        ></button>
+
+                        <textarea
+                            ref={inputRef}
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            onKeyDown={onInputKeyDown}
+                            placeholder="请输入消息内容..."
+                            className="conversation-detail-input"
+                            disabled={uploading}
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        className="conversation-detail-sendbtn"
+                        disabled={uploading}
+                    >
+                        发送
+                    </button>
+
+                    {/* 隐藏文件输入框 */}
+                    <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleFileChosen(e, 'IMAGE')}
+                    />
+                    <input
+                        ref={videoInputRef}
+                        type="file"
+                        accept="video/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleFileChosen(e, 'VIDEO')}
+                    />
+                </form>
+
+                {/* 上传进度条 */}
+                {uploading && (
+                    <div
+                        className="conversation-detail-uploadprogress"
+                        aria-live="polite"
+                    >
+                        <div
+                            className="bar"
+                            style={{ width: `${uploadProgress}%` }}
+                        />
+                        <span className="pct">{uploadProgress}%</span>
+                    </div>
+                )}
+            </div>
+
+            {/* 右键菜单（消息） */}
+            {menu.visible && menu.msg && (
+                <div
+                    className="msg-context-menu"
+                    style={{ left: menu.x, top: menu.y }}
+                >
+                    {menu.msg.senderId === Number(userId) &&
+                        !menu.msg.__recalled &&
+                        Number.isFinite(new Date(menu.msg.createdAt).getTime()) &&
+                        Date.now() - new Date(menu.msg.createdAt).getTime() <=
+                        2 * 60 * 1000 && (
+                            <button onClick={() => recallMessage(menu.msg.id)}>撤回</button>
+                        )}
+                    <button onClick={() => deleteMessage(menu.msg.id)}>删除</button>
+                </div>
+            )}
+
+            {/* 侧边栏头像右键菜单（拉黑/取消拉黑） */}
+            {sidebarMenu.visible && sidebarMenu.user && (
+                <div
+                    className="sidebar-context-menu"
+                    style={{
+                        position: 'fixed',
+                        left: sidebarMenu.x,
+                        top: sidebarMenu.y,
+                        zIndex: 1200,
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        padding: '6px',
+                        borderRadius: 4
+                    }}
+                    onClick={(e) => {
+                        // prevent outer click handlers from immediately closing menu
+                        e.stopPropagation();
+                    }}
+                >
+                    <button
+                        onClick={async () => {
+                            const targetId = sidebarMenu.user.otherId;
+                            const result = await toggleBlockUser(targetId);
+                            // reflect toggled state in menu
+                            setSidebarMenu(s => ({ ...s, visible: false, user: null, blocked: !!result }));
+                        }}
+                    >
+                        {sidebarMenu.blocked ? '取消拉黑该用户' : '拉黑该用户'}
+                    </button>
+                </div>
+            )}
         </div>
-      )}
-    </div>
-  );
+    );
 }
