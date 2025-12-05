@@ -2,6 +2,8 @@ import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { startGlobalNotificationSubscriber } from './globalNotificationSubscriber';
+
 const Welcome = lazy(() => import('./pages/Welcome'));
 const Home = lazy(() => import('./pages/Home'));
 const SelfSpace = lazy(() => import('./pages/SelfSpace'));
@@ -13,6 +15,9 @@ const UserSearch = lazy(() => import('./pages/UserSearch'));
 const PendingFriendRequests = lazy(() => import('./pages/PendingFriendRequests'));
 const FriendsList = lazy(() => import('./pages/FriendsList'));
 const FollowingList = lazy(() => import('./pages/FollowingList'));
+
+// 应用启动时，开启全局通知订阅（只创建一次 SSE，并把通知写入 IndexedDB）
+startGlobalNotificationSubscriber();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
 	<React.StrictMode>
