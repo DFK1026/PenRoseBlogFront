@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import MarkdownIt from 'markdown-it';
-import { useParams } from 'react-router-dom';
 import BannerNavbar from '../components/common/BannerNavbar';
 import '../styles/article/ArticleDetail.css';
 import resolveUrl from '../utils/resolveUrl';
@@ -10,6 +9,7 @@ export default function ArticleDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const [post, setPost] = useState(null);
+    const [notFound, setNotFound] = useState(false); // 标记文章不存在 / 已被删除
     const [comments, setComments] = useState([]);
     // 评论分页
     const [commentsPage, setCommentsPage] = useState(1);
@@ -61,72 +61,100 @@ export default function ArticleDetail() {
 
     // ---------------- 加载文章 & 记录浏览 ----------------
     useEffect(() => {
+        let cancelled = false;
+        setPost(null);
+        setNotFound(false); // 每次切换 id 时重置
+
         fetch(`/api/blogpost/${id}${userId ? `?currentUserId=${userId}` : ''}`)
-            .then((r) => r.json())
-            .then(async (j) => {
+            .then(async (r) => {
+                const j = await r.json().catch(() => null);
                 // eslint-disable-next-line no-console
                 console.log('[文章详情] 后端返回数据:', j);
-                if (j && j.code === 200) {
-                    setPost(j.data);
+                if (cancelled) return { j, r };
 
-                    // 记录一次浏览
-                    try {
-                        const SHORT_WINDOW_MS = 1000;
-                        const key = `view_record_${id}`;
-                        const now = Date.now();
-                        const last = Number(sessionStorage.getItem(key) || 0);
-                        if (last && now - last < SHORT_WINDOW_MS) {
-                            // eslint-disable-next-line no-console
-                            console.debug(
-                                '[浏览] 短时内已记录，跳过重复记录',
-                                id
-                            );
-                        } else if (!recordedRef.current) {
-                            recordedRef.current = true;
-                            sessionStorage.setItem(key, String(now));
-                            const payload = { blogPostId: Number(id) };
-                            if (userId) payload.userId = Number(userId);
-                            const rec = await fetch('/api/blogview/record', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload),
-                            });
-                            const jr = await rec.json().catch(() => null);
-                            if (jr && jr.code === 200 && jr.data) {
-                                const vc = Number(jr.data.viewCount || 0);
-                                setPost((prev) =>
-                                    prev ? { ...prev, viewCount: vc } : prev
-                                );
-                                try {
-                                    window.dispatchEvent(
-                                        new CustomEvent('blogview-updated', {
-                                            detail: { blogPostId: String(id), viewCount: vc },
-                                        })
-                                    );
-                                } catch {
-                                    // ignore
-                                }
-                            }
-                            setTimeout(() => {
-                                recordedRef.current = false;
-                            }, 800);
-                        } else {
-                            // eslint-disable-next-line no-console
-                            console.debug(
-                                '[浏览] 已在记录中，跳过本次重复触发',
-                                id
-                            );
-                        }
-                    } catch (e) {
-                        recordedRef.current = false;
+                if (j && j.code === 200 && j.data) {
+                    setPost(j.data);
+                } else if (j && j.code === 404) {
+                    // 后端业务 404：博客不存在 / 已删除
+                    setNotFound(true);
+                } else if (!j && r.status === 404) {
+                    // HTTP 404 兜底
+                    setNotFound(true);
+                }
+
+                return { j, r };
+            })
+            .then(async (wrap) => {
+                if (!wrap) return;
+                const { j } = wrap;
+                // 只有文章存在时才记录浏览
+                if (!j || j.code !== 200 || !j.data) return;
+
+                try {
+                    const SHORT_WINDOW_MS = 1000;
+                    const key = `view_record_${id}`;
+                    const now = Date.now();
+                    const last = Number(sessionStorage.getItem(key) || 0);
+                    if (last && now - last < SHORT_WINDOW_MS) {
                         // eslint-disable-next-line no-console
-                        console.error('[记录浏览失败]', e);
+                        console.debug(
+                            '[浏览] 短时内已记录，跳过重复记录',
+                            id
+                        );
+                    } else if (!recordedRef.current) {
+                        recordedRef.current = true;
+                        sessionStorage.setItem(key, String(now));
+                        const payload = { blogPostId: Number(id) };
+                        if (userId) payload.userId = Number(userId);
+                        const rec = await fetch('/api/blogview/record', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload),
+                        });
+                        const jr = await rec.json().catch(() => null);
+                        if (jr && jr.code === 200 && jr.data) {
+                            const vc = Number(jr.data.viewCount || 0);
+                            setPost((prev) =>
+                                prev ? { ...prev, viewCount: vc } : prev
+                            );
+                            try {
+                                window.dispatchEvent(
+                                    new CustomEvent('blogview-updated', {
+                                        detail: { blogPostId: String(id), viewCount: vc },
+                                    })
+                                );
+                            } catch {
+                                // ignore
+                            }
+                        }
+                        setTimeout(() => {
+                            recordedRef.current = false;
+                        }, 800);
+                    } else {
+                        // eslint-disable-next-line no-console
+                        console.debug(
+                            '[浏览] 已在记录中，跳过本次重复触发',
+                            id
+                        );
                     }
+                } catch (e) {
+                    recordedRef.current = false;
+                    // eslint-disable-next-line no-console
+                    console.error('[记录浏览失败]', e);
                 }
             })
-            .catch(() => {});
+            .catch(() => {
+                if (!cancelled) {
+                    // 网络错误，这里不标记 notFound，以免误判
+                }
+            });
+
         // load comments
         loadComments();
+
+        return () => {
+            cancelled = true;
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id, userId]);
 
@@ -737,6 +765,49 @@ export default function ArticleDetail() {
         }
     };
 
+    // ----- 删除博客 -----
+    const handleDeletePost = async () => {
+        if (!userId) {
+            // eslint-disable-next-line no-alert
+            alert('请先登录');
+            return;
+        }
+        // 只有作者能删，前端再做一次防御判断
+        const ownerId =
+            post?.userId ||
+            post?.authorId ||
+            post?.authorUserId ||
+            post?.uid ||
+            null;
+        if (!ownerId || String(ownerId) !== String(userId)) {
+            // eslint-disable-next-line no-alert
+            alert('只有作者本人可以删除该博客');
+            return;
+        }
+        // eslint-disable-next-line no-alert
+        const ok = window.confirm('确定要删除这篇博客吗？此操作不可恢复！');
+        if (!ok) return;
+        try {
+            const res = await fetch(`/api/blogpost/${id}?userId=${userId}`, {
+                method: 'DELETE',
+            });
+            const j = await res.json().catch(() => null);
+            if (j && j.code === 200 && j.data) {
+                // eslint-disable-next-line no-alert
+                alert('删除成功');
+                navigate('/'); // 删除后跳回首页，你可以改成 '/selfspace' 等
+            } else {
+                // eslint-disable-next-line no-alert
+                alert((j && (j.message || j.msg)) || '删除失败');
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[删除博客失败]', e);
+            // eslint-disable-next-line no-alert
+            alert('删除失败，网络错误');
+        }
+    };
+
     useEffect(() => {
         const handleScroll = () => {
             const current =
@@ -853,7 +924,7 @@ export default function ArticleDetail() {
 
     const md = new MarkdownIt();
 
-    // ----- 新增：根据 URL 的 commentId 定位评论 -----
+    // ----- 根据 URL 的 commentId 定位评论 -----
     useEffect(() => {
         if (!comments || comments.length === 0) return;
 
@@ -896,14 +967,57 @@ export default function ArticleDetail() {
         }
     }, [comments, sortedComments, commentsPerPage]);
 
-    if (!post) {
+    // ---------- 这里处理“不存在”和“加载中”两种状态 ----------
+
+    if (notFound) {
         return (
-            <div>
+            <div className="article-detail-page">
                 <BannerNavbar />
-                <div style={{ padding: 24 }}>加载中...</div>
+                <div
+                    style={{
+                        minHeight: '60vh',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 20,
+                        color: '#555',
+                    }}
+                >
+                    啊哦，博客消失了喵❤
+                </div>
             </div>
         );
     }
+
+    if (!post) {
+        return (
+            <div className="article-detail-page">
+                <BannerNavbar />
+                <div
+                    style={{
+                        minHeight: '60vh',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 16,
+                        color: '#666',
+                    }}
+                >
+                    加载中...
+                </div>
+            </div>
+        );
+    }
+
+    // 计算当前登录用户是否是作者
+    const ownerId =
+        post.userId ||
+        post.authorId ||
+        post.authorUserId ||
+        post.uid ||
+        null;
+    const isOwner =
+        ownerId && userId && String(ownerId) === String(userId);
 
     // ---------------- 转发相关前端逻辑 ----------------
 
@@ -1032,7 +1146,34 @@ export default function ArticleDetail() {
             <BannerNavbar />
             <div className="article-detail-container">
                 <article className="article-main">
-                    <h1>{post.title}</h1>
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                        }}
+                    >
+                        <h1>{post.title}</h1>
+                        {isOwner && (
+                            <button
+                                type="button"
+                                onClick={handleDeletePost}
+                                style={{
+                                    backgroundColor: '#dc2626',
+                                    color: '#fff',
+                                    border: 'none',
+                                    padding: '6px 12px',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                    fontSize: 13,
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                删除博客
+                            </button>
+                        )}
+                    </div>
                     <div
                         className="article-meta"
                         style={{
@@ -1064,13 +1205,13 @@ export default function ArticleDetail() {
                             </Link>
                         ) : null}
                         <span>
-              {post.authorNickname ? post.authorNickname : '匿名'}
-            </span>
+                            {post.authorNickname ? post.authorNickname : '匿名'}
+                        </span>
                         <span
                             style={{ color: '#bbb', marginLeft: 8 }}
                         >
-              {new Date(post.createdAt).toLocaleString()}
-            </span>
+                            {new Date(post.createdAt).toLocaleString()}
+                        </span>
                     </div>
                     <div
                         className="article-content"
@@ -1243,16 +1384,16 @@ export default function ArticleDetail() {
                                         <div className="comment-main">
                                             <div className="comment-header">
                                                 <div className="comment-meta-top">
-                          <span className="comment-author">
-                            {c.nickname}
-                          </span>
+                                                    <span className="comment-author">
+                                                        {c.nickname}
+                                                    </span>
                                                     <span className="comment-time">
-                            {' '}
+                                                        {' '}
                                                         ·{' '}
                                                         {new Date(
                                                             c.createdAt
                                                         ).toLocaleString()}
-                          </span>
+                                                    </span>
                                                 </div>
                                             </div>
                                             <div className="comment-content">
@@ -1433,15 +1574,15 @@ export default function ArticleDetail() {
                                                                                         </Link>
                                                                                     ) : (
                                                                                         <span className="mention-link">
-                                              @{m[1]}
-                                            </span>
+                                                                                            @{m[1]}
+                                                                                        </span>
                                                                                     )}
                                                                                     <span>
-                                            {' '}
+                                                                                        {' '}
                                                                                         {r.content.slice(
                                                                                             m[0].length
                                                                                         )}
-                                          </span>
+                                                                                    </span>
                                                                                 </div>
                                                                             ) : (
                                                                                 <div className="reply-content">
@@ -1485,8 +1626,8 @@ export default function ArticleDetail() {
                                                                             上一页
                                                                         </button>
                                                                         <span className="pager-current">
-                                      第 {rp.page} 页
-                                    </span>
+                                                                            第 {rp.page} 页
+                                                                        </span>
                                                                         <button
                                                                             type="button"
                                                                             className="pager-button"
@@ -1548,17 +1689,17 @@ export default function ArticleDetail() {
                                                         handleSubmitReply(e, c.id)
                                                     }
                                                 >
-                          <textarea
-                              placeholder="回复…"
-                              value={replyTextMap[c.id] || ''}
-                              onChange={(e) =>
-                                  setReplyTextMap((prev) => ({
-                                      ...prev,
-                                      [c.id]: e.target.value,
-                                  }))
-                              }
-                              required
-                          />
+                                                    <textarea
+                                                        placeholder="回复…"
+                                                        value={replyTextMap[c.id] || ''}
+                                                        onChange={(e) =>
+                                                            setReplyTextMap((prev) => ({
+                                                                ...prev,
+                                                                [c.id]: e.target.value,
+                                                            }))
+                                                        }
+                                                        required
+                                                    />
                                                     <div>
                                                         <button type="submit">
                                                             回复
@@ -1586,8 +1727,8 @@ export default function ArticleDetail() {
                                         上一页
                                     </button>
                                     <span className="pager-current">
-                    第 {commentsPage} 页
-                  </span>
+                                        第 {commentsPage} 页
+                                    </span>
                                     <button
                                         type="button"
                                         className="pager-button"
