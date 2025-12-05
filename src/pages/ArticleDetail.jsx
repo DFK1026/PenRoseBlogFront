@@ -105,9 +105,13 @@ export default function ArticleDetail(){
         try {
           const ids = (list || []).map(c => c.id).filter(Boolean);
           if (ids.length) {
-            const promises = ids.map(cid =>
-              fetch(`/api/comment-reply/list/${cid}${userId?`?currentUserId=${userId}`:''}`).then(r => r.ok ? r.json().catch(()=>null) : null).catch(()=>null)
-            );
+            const promises = ids.map(cid => {
+              const params = new URLSearchParams();
+              params.set('size', '10000');
+              if (userId) params.set('currentUserId', userId);
+              const url = `/api/comment-reply/list/${cid}?${params.toString()}`;
+              return fetch(url).then(r => r.ok ? r.json().catch(()=>null) : null).catch(()=>null);
+            });
             const results = await Promise.all(promises);
             // 构建 map 并回写 replyCount 到 comments
             const countMap = new Map();
@@ -174,7 +178,10 @@ export default function ArticleDetail(){
   async function loadReplies(commentId) {
     if (!commentId) return;
     try {
-      const res = await fetch(`/api/comment-reply/list/${commentId}${userId?`?currentUserId=${userId}`:''}`);
+      const params = new URLSearchParams();
+      params.set('size', '10000');
+      if (userId) params.set('currentUserId', userId);
+      const res = await fetch(`/api/comment-reply/list/${commentId}?${params.toString()}`);
       const j = await res.json().catch(()=>null);
       if (j && j.code === 200) {
         // 兼容后端返回结构：data 可能是数组或 { list: [...] }
@@ -228,30 +235,60 @@ export default function ArticleDetail(){
           }
           return cm;
         }));
+
+        // 返回加载的 list，供调用方使用（方便计算目标回复所在页）
+        return list;
       }
     } catch(e) { console.error('[loadReplies]', e); }
+    return [];
   }
 
-  // 点击预览：展开父评论楼中楼（若未加载则先加载），随后滚动到指定回复位置
+  // 点击预览：展开父评论楼中楼（若未加载则先加载），随后跳转到指定回复位置并高亮
   async function openCommentReplyAndScroll(commentId, replyId){
-    // 展开面板
-    setOpenReplies(prev => ({ ...prev, [commentId]: true }));
-    // 若尚未加载则拉取
-    if (!repliesMap[commentId]) {
-      try { await loadReplies(commentId); } catch(e){ console.error('[openCommentReplyAndScroll] loadReplies failed', e); }
-    }
-    // 清除已有高亮（避免残留）
-    try { document.querySelectorAll('.hot-highlight').forEach(el=>el.classList.remove('hot-highlight')); } catch(e){}
-    // 等待渲染后滚动并高亮目标回复
-    setTimeout(()=>{
-      const el = document.getElementById(`reply-${replyId}`);
-      if(el){
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // 加灰底提示并在若干时间后移除
-        el.classList.add('hot-highlight');
-        setTimeout(()=>{ try{ el.classList.remove('hot-highlight'); }catch(e){} }, 2600);
+    try {
+      // 先获取（或加载）该父评论的回复列表
+      let list = repliesMap[commentId];
+      if (!Array.isArray(list) || list.length === 0) {
+        // loadReplies 现在会 return list
+        list = await loadReplies(commentId) || [];
       }
-    }, 120);
+      // 查找目标回复在列表中的索引
+      const idx = (list || []).findIndex(r => String(r.id) === String(replyId));
+      // 计算目标页码（基于 repliesPerPage）
+      const pageForReply = (idx >= 0) ? (Math.floor(idx / repliesPerPage) + 1) : 1;
+      // 先设置页码并展开（确保 UI 会展示包含该回复的页）
+      setRepliesPageMap(prev => ({ ...prev, [commentId]: pageForReply }));
+      setOpenReplies(prev => ({ ...prev, [commentId]: true }));
+
+      // 清除已有高亮（避免残留）
+      try { document.querySelectorAll('.hot-highlight').forEach(el=>el.classList.remove('hot-highlight')); } catch(e){}
+
+      // 等待渲染完成后滚动并高亮目标回复
+      // 使用短延迟确保 React 已渲染对应页的 DOM
+      setTimeout(()=>{
+        const el = document.getElementById(`reply-${replyId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('hot-highlight');
+          setTimeout(()=>{ try{ el.classList.remove('hot-highlight'); }catch(e){} }, 2600);
+        } else {
+          // 兜底：若没找到元素，再次确保展开后短延迟尝试滚动
+          setTimeout(()=>{
+            const el2 = document.getElementById(`reply-${replyId}`);
+            if (el2) {
+              el2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el2.classList.add('hot-highlight');
+              setTimeout(()=>{ try{ el2.classList.remove('hot-highlight'); }catch(e){} }, 2600);
+            }
+          }, 180);
+        }
+      }, 120);
+    } catch(e) {
+      console.error('[openCommentReplyAndScroll] error', e);
+      // 兜底：直接展开并尝试滚动
+      setOpenReplies(prev => ({ ...prev, [commentId]: true }));
+      setTimeout(()=>{ const el = document.getElementById(`reply-${replyId}`); if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }, 200);
+    }
   }
 
   // 切换展开/收起楼中楼（第一次展开时加载）
@@ -290,29 +327,56 @@ export default function ArticleDetail(){
       const body = { commentId: Number(commentId), userId: Number(userId), content };
       const replyToUserId = replyMentionMap[commentId];
       if (replyToUserId) body.replyToUserId = Number(replyToUserId);
-       const res = await fetch('/api/comment-reply', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-       const j = await res.json().catch(()=>null);
-       if (j && j.code === 200) {
-         const newReplyId = j.data && (j.data.id || j.data.replyId);
-         setReplyTextMap(prev => ({ ...prev, [commentId]: '' }));
-        // 提交后清除本地的 mention 映射（已发送）
+      const res = await fetch('/api/comment-reply', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await res.json().catch(()=>null);
+      if (j && j.code === 200) {
+        const newReplyId = j.data && (j.data.id || j.data.replyId);
+        // 清空输入与已记录的 mention
+        setReplyTextMap(prev => ({ ...prev, [commentId]: '' }));
         setReplyMentionMap(prev => { const n = { ...prev }; delete n[commentId]; return n; });
-         // 刷新该父评论的回复列表
-         await loadReplies(commentId);
-         // 滚动到刚发的楼中楼（优先用后端返回 id，否则滚动到回复列表最后一项）
-         setTimeout(()=>{
-           if(newReplyId){
-             const el = document.getElementById(`reply-${newReplyId}`);
-             if(el){ el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-           }
-           const last = document.querySelector(`#comment-${commentId} .reply-list .reply-item:last-child`);
-           if(last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
-         }, 80);
-       } else {
-         alert('回复失败');
-       }
-     } catch(e){ console.error(e); alert('网络错误'); }
-   }
+
+        // 重新加载该父评论的回复列表并获取完整列表（loadReplies 会返回 list）
+        const list = await loadReplies(commentId) || repliesMap[commentId] || [];
+
+        // 计算新回复在列表中的索引（若后端返回了 id 则优先定位），否则使用最后一条
+        let idx = -1;
+        if (newReplyId) {
+          idx = (list || []).findIndex(r => String(r.id) === String(newReplyId));
+        }
+        if (idx < 0) {
+          idx = Math.max(0, (list || []).length - 1);
+        }
+
+        // 计算目标页码（基于 repliesPerPage），并先设置页码与展开状态
+        const pageForNew = Math.max(1, Math.ceil((idx + 1) / repliesPerPage));
+        setRepliesPageMap(prev => ({ ...prev, [commentId]: pageForNew }));
+        setOpenReplies(prev => ({ ...prev, [commentId]: true }));
+
+        // 等待渲染完成后滚动并高亮目标回复
+        setTimeout(() => {
+          const targetId = newReplyId || (list && list[idx] && list[idx].id);
+          if (targetId) {
+            const el = document.getElementById(`reply-${targetId}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.classList.add('hot-highlight');
+              setTimeout(()=>{ try{ el.classList.remove('hot-highlight'); }catch(e){} }, 2600);
+              return;
+            }
+          }
+          // 兜底：滚动到该评论的最后一条回复
+          const last = document.querySelector(`#comment-${commentId} .reply-list .reply-item:last-child`);
+          if (last) {
+            last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            last.classList.add('hot-highlight');
+            setTimeout(()=>{ try{ last.classList.remove('hot-highlight'); }catch(e){} }, 2600);
+          }
+        }, 120);
+      } else {
+        alert('回复失败');
+      }
+    } catch(e){ console.error(e); alert('网络错误'); }
+  }
 
   // 点赞/取消点赞：父评论
   async function toggleCommentLike(commentId) {
@@ -350,6 +414,8 @@ export default function ArticleDetail(){
       if(j && j.code===200){
         const newCommentId = j.data && (j.data.id || j.data.commentId);
         setCommentText('');
+        // 发布评论后自动切换为按时间排序并回到第一页，保证最新评论能被看到
+        try { setCommentsSort('time'); } catch(e) { setCommentsSortMode('time'); setCommentsPage(1); }
         await loadComments();
         // 滚动到新评论（优先用后端返回 id），否则滚动到首条评论
         setTimeout(()=>{
