@@ -260,7 +260,18 @@ export default function ConversationDetail() {
             });
     }, [userId, otherId]);
 
-    /** ---------------- 初始与切换会话：先用本地缓存填充 ---------------- */
+    /** ---------------- 从 URL 解析转发文本：增加“已自动发送”防重标记 ---------------- */
+
+        // 生成当前分享 URL 的「已自动发送标记」key
+    const buildShareSentKey = (raw) => {
+            if (!userId || !otherId || !raw) return null;
+            // 简单 hash：长度 + 前后 10 字符，避免 URL 太长
+            const s = String(raw);
+            const head = s.slice(0, 10);
+            const tail = s.slice(-10);
+            const len = s.length;
+            return `pm_auto_shared_${userId}_${otherId}_${len}_${head}_${tail}`;
+        };
 
     // 解析 URL 参数中的 ?text=（例如从博客转发时带过来的分享链接）
     useEffect(() => {
@@ -279,9 +290,30 @@ export default function ConversationDetail() {
         } catch {
             parsed = raw;
         }
+
+        // 无论是否自动发送，都让输入框先带上这段文字，方便用户查看/编辑
         setText(parsed);
-        setInitialSharedText(parsed);
-        setInitialSharedTextSent(false);
+
+        // 检查是否已对当前会话自动发送过这条分享链接
+        let alreadySent = false;
+        const key = buildShareSentKey(parsed);
+        if (key && typeof window !== 'undefined' && window.sessionStorage) {
+            try {
+                alreadySent = window.sessionStorage.getItem(key) === '1';
+            } catch {
+                alreadySent = false;
+            }
+        }
+
+        if (alreadySent) {
+            // 已经自动发过了：不再触发自动发送，仅作为普通草稿存在
+            setInitialSharedText('');
+            setInitialSharedTextSent(true);
+        } else {
+            // 还没发过：标记为待自动发送
+            setInitialSharedText(parsed);
+            setInitialSharedTextSent(false);
+        }
 
         // 让 textarea 聚焦到末尾
         setTimeout(() => {
@@ -293,9 +325,9 @@ export default function ConversationDetail() {
                 } catch { }
             }
         }, 100);
-    }, [location]);
+    }, [location]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // 尝试自动发送从博客转发过来的分享链接（只自动一次）
+    // 尝试自动发送从博客转发过来的分享链接（只自动一次 & 有 sessionStorage 防重）
     useEffect(() => {
         if (!userId || !otherId) return;
         if (!initialSharedText || initialSharedTextSent) return;
@@ -312,6 +344,21 @@ export default function ConversationDetail() {
         }
 
         if (!isSameOriginUrl) return;
+
+        const key = buildShareSentKey(initialSharedText);
+
+        // 如果 sessionStorage 里已经存在记录，再保险判断一次，避免极端情况重复发送
+        if (key && typeof window !== 'undefined' && window.sessionStorage) {
+            try {
+                const flag = window.sessionStorage.getItem(key);
+                if (flag === '1') {
+                    setInitialSharedTextSent(true);
+                    return;
+                }
+            } catch {
+                // 忽略 storage 异常，继续走发送逻辑
+            }
+        }
 
         // 自动发送函数：直接调用发送接口，避免用户再手点一次
         const autoSendSharedText = async () => {
@@ -332,8 +379,19 @@ export default function ConversationDetail() {
                     cacheConversationMessages(userId, otherId, [msg], 1000)
                         .then(() => console.log('[PM] cache after auto-send shared text, id=', msg.id))
                         .catch(() => { });
+
                     setInitialSharedTextSent(true);
-                    setText(''); // 自动发送后清空输入框
+                    setText(''); // 自动发送后清空输入框中的链接
+
+                    // 写入 sessionStorage，后续刷新或再次进入该会话，不再自动发送这条链接
+                    if (key && typeof window !== 'undefined' && window.sessionStorage) {
+                        try {
+                            window.sessionStorage.setItem(key, '1');
+                        } catch {
+                            // 忽略 storage 异常
+                        }
+                    }
+
                     autoScrollEnabledRef.current = true;
                     refreshView();
                 } else {
@@ -345,7 +403,7 @@ export default function ConversationDetail() {
         };
 
         autoSendSharedText();
-    }, [userId, otherId, initialSharedText, initialSharedTextSent, refreshView]);
+    }, [userId, otherId, initialSharedText, initialSharedTextSent, refreshView]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!userId || !otherId) return;
