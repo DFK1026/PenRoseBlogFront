@@ -6,7 +6,7 @@ import React, {
     useCallback,
     useMemo
 } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import BannerNavbar from '../components/common/BannerNavbar';
 import '../styles/message/ConversationDetail.css';
 
@@ -21,6 +21,7 @@ import {
 export default function ConversationDetail() {
     const { otherId } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
 
     // 核心状态
     const [messages, setMessages] = useState([]);
@@ -77,6 +78,10 @@ export default function ConversationDetail() {
     const lastSeenMaxTimeRef = useRef(0);
     const seenIdsRef = useRef(new Set());
 
+    // 来自 ?text= 的初始文本（用于从文章详情转发）
+    const [initialSharedText, setInitialSharedText] = useState('');
+    const [initialSharedTextSent, setInitialSharedTextSent] = useState(false);
+
     /** ---------------- 工具方法 ---------------- */
 
     const mergeMessages = (oldList, newList) => {
@@ -129,7 +134,6 @@ export default function ConversationDetail() {
                 try {
                     window.dispatchEvent(new Event('pm-unread-refresh'));
                 } catch (err) {
-                    // ignore
                     console.warn('pm-unread-refresh dispatch failed', err);
                 }
             })
@@ -163,7 +167,6 @@ export default function ConversationDetail() {
             });
             const j = await res.json().catch(() => null);
             if (j && j.code === 200) {
-                // update local conversation entry if present
                 setConversations(prev => {
                     if (!Array.isArray(prev)) return prev;
                     return prev.map(c => c && String(c.otherId) === String(targetId)
@@ -200,11 +203,9 @@ export default function ConversationDetail() {
             if (j && j.code === 200 && j.data) {
                 const newMsgs = j.data.list || [];
 
-                // 永远在现有 messages 基础上“补齐”，不再有覆盖逻辑
                 setMessages(prev => {
                     const existingIds = new Set((prev || []).map(m => m.id));
                     const filteredNew = (newMsgs || []).filter(m => !existingIds.has(m.id));
-                    // 服务器分页是“越大 page 越早的历史消息”，所以老消息应该加在前面
                     const merged = [...filteredNew, ...(prev || [])];
                     return merged.sort((a, b) => {
                         const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -213,10 +214,8 @@ export default function ConversationDetail() {
                     });
                 });
 
-                // 写入 IndexedDB 缓存（最多 1000 条）
                 cacheConversationMessages(userId, otherId, newMsgs, 1000)
                     .then(() => {
-                        // 方便你在 F12 里看到缓存写入情况
                         console.log(
                             '[PM] cacheConversationMessages written page',
                             pageNum,
@@ -224,7 +223,7 @@ export default function ConversationDetail() {
                             newMsgs.length
                         );
                     })
-                    .catch(() => {});
+                    .catch(() => { });
 
                 if (newMsgs.length < 20) {
                     setHasMore(false);
@@ -263,13 +262,97 @@ export default function ConversationDetail() {
 
     /** ---------------- 初始与切换会话：先用本地缓存填充 ---------------- */
 
+    // 解析 URL 参数中的 ?text=（例如从博客转发时带过来的分享链接）
+    useEffect(() => {
+        if (!location) return;
+        const sp = new URLSearchParams(location.search || '');
+        const raw = sp.get('text');
+        if (!raw) {
+            setInitialSharedText('');
+            setText('');
+            setInitialSharedTextSent(false);
+            return;
+        }
+        let parsed = raw;
+        try {
+            parsed = decodeURIComponent(raw);
+        } catch {
+            parsed = raw;
+        }
+        setText(parsed);
+        setInitialSharedText(parsed);
+        setInitialSharedTextSent(false);
+
+        // 让 textarea 聚焦到末尾
+        setTimeout(() => {
+            if (inputRef.current) {
+                const v = inputRef.current.value || '';
+                inputRef.current.focus();
+                try {
+                    inputRef.current.setSelectionRange(v.length, v.length);
+                } catch { }
+            }
+        }, 100);
+    }, [location]);
+
+    // 尝试自动发送从博客转发过来的分享链接（只自动一次）
+    useEffect(() => {
+        if (!userId || !otherId) return;
+        if (!initialSharedText || initialSharedTextSent) return;
+
+        // 简单判断：是否为本站的 URL，如果不是则不自动发送
+        let isSameOriginUrl = false;
+        try {
+            const u = new URL(initialSharedText);
+            if (u.origin === window.location.origin) {
+                isSameOriginUrl = true;
+            }
+        } catch {
+            isSameOriginUrl = false;
+        }
+
+        if (!isSameOriginUrl) return;
+
+        // 自动发送函数：直接调用发送接口，避免用户再手点一次
+        const autoSendSharedText = async () => {
+            try {
+                const body = { text: initialSharedText };
+                const res = await fetch(`/api/messages/text/${otherId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': userId
+                    },
+                    body: JSON.stringify(body)
+                });
+                const j = await res.json().catch(() => null);
+                if (j && j.code === 200 && j.data) {
+                    const msg = j.data;
+                    setMessages(prev => mergeMessages(prev, [msg]));
+                    cacheConversationMessages(userId, otherId, [msg], 1000)
+                        .then(() => console.log('[PM] cache after auto-send shared text, id=', msg.id))
+                        .catch(() => { });
+                    setInitialSharedTextSent(true);
+                    setText(''); // 自动发送后清空输入框
+                    autoScrollEnabledRef.current = true;
+                    refreshView();
+                } else {
+                    console.warn('auto send shared text failed', j);
+                }
+            } catch (err) {
+                console.warn('auto send shared text error', err);
+            }
+        };
+
+        autoSendSharedText();
+    }, [userId, otherId, initialSharedText, initialSharedTextSent, refreshView]);
+
     useEffect(() => {
         if (!userId || !otherId) return;
 
         let cancelled = false;
 
         (async () => {
-            // 1. 先从 IndexedDB 预加载最近 N 条消息
             const cached = await preloadConversationMessages(userId, otherId, 1000);
             if (cancelled) return;
 
@@ -282,15 +365,13 @@ export default function ConversationDetail() {
             if (cached && cached.length > 0) {
                 setMessages(cached);
             } else {
-                setMessages([]); // 确保状态清空
+                setMessages([]);
             }
 
-            // 2. 再从服务器拉取 page=0，作为“增量补充”，不再覆盖本地缓存
             setPage(0);
             setHasMore(true);
             fetchMessages(0);
 
-            // 3. 标记当前会话为已读
             markReadCurrent();
         })();
 
@@ -319,7 +400,7 @@ export default function ConversationDetail() {
                         lastMessage: c.lastMessage,
                         lastAt: c.lastAt,
                         unreadCount: c.unreadCount || 0,
-                        blocked: false // default, updated later when user queries or toggles
+                        blocked: false
                     }))
                 );
             }
@@ -365,7 +446,6 @@ export default function ConversationDetail() {
                     list = await Promise.all(
                         list.map(async x => {
                             if (!x || String(x.otherId) !== String(otherId)) {
-                                // keep existing entries but add blocked=false by default
                                 return { ...x, blocked: false };
                             }
                             if (x.nickname && x.avatarUrl) return { ...x, blocked: false };
@@ -393,7 +473,7 @@ export default function ConversationDetail() {
                     );
 
                     setConversations(list);
-                    cacheConversationSummaries(userId, list).catch(() => {});
+                    cacheConversationSummaries(userId, list).catch(() => { });
                 }
             } catch (err) {
                 console.warn('load conversation list failed', err);
@@ -403,14 +483,12 @@ export default function ConversationDetail() {
         loadList();
     }, [userId, otherId, otherInfo]);
 
-    // close sidebar menu when clicking anywhere
     useEffect(() => {
         const onDocClick = () => setSidebarMenu({ visible: false, x: 0, y: 0, user: null, blocked: false });
         document.addEventListener('click', onDocClick);
         return () => document.removeEventListener('click', onDocClick);
     }, []);
 
-    // 视图加载
     useEffect(() => {
         refreshView();
     }, [refreshView]);
@@ -449,6 +527,10 @@ export default function ConversationDetail() {
             merged.__displayText = v.displayText || '';
             if (merged.__recalled) {
                 if (m && m.text) merged.__originalText = m.text;
+            }
+            // NOTE: blogPreview 由后端 PrivateMessageDTO 返回
+            if (m && m.blogPreview) {
+                merged.blogPreview = m.blogPreview;
             }
             return merged;
         });
@@ -622,9 +704,8 @@ export default function ConversationDetail() {
                 setMessages(prev => mergeMessages(prev, [msg]));
                 cacheConversationMessages(userId, otherId, [msg], 1000)
                     .then(() => console.log('[PM] cache after send text, id=', msg.id))
-                    .catch(() => {});
+                    .catch(() => { });
             } else {
-                // show server message (for blocked or other reasons)
                 alert((j && (j.msg || j.message)) || '发送失败');
             }
         } catch (err) {
@@ -638,7 +719,7 @@ export default function ConversationDetail() {
     const onInputKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            const fakeEvent = { preventDefault: () => {} };
+            const fakeEvent = { preventDefault: () => { } };
             handleSend(fakeEvent);
         }
     };
@@ -740,7 +821,7 @@ export default function ConversationDetail() {
 
                 cacheConversationMessages(userId, otherId, [dto], 1000)
                     .then(() => console.log('[PM] cache after send media, id=', dto.id))
-                    .catch(() => {});
+                    .catch(() => { });
 
                 requestAnimationFrame(() => {
                     const el = rightScrollRef.current;
@@ -1006,7 +1087,7 @@ export default function ConversationDetail() {
                 .then(j => {
                     if (j && j.code === 200 && j.data?.list) {
                         setConversations(j.data.list);
-                        cacheConversationSummaries(userId, j.data.list).catch(() => {});
+                        cacheConversationSummaries(userId, j.data.list).catch(() => { });
                     }
                 })
                 .catch((err) => {
@@ -1026,7 +1107,7 @@ export default function ConversationDetail() {
                                 return merged;
                             });
                             cacheConversationMessages(userId, otherId, j.data.list, 1000).catch(
-                                () => {}
+                                () => { }
                             );
                         }
                     })
@@ -1097,7 +1178,6 @@ export default function ConversationDetail() {
                                 }}
                                 onContextMenu={async (e) => {
                                     e.preventDefault();
-                                    // stop propagation to avoid outer click handlers
                                     e.stopPropagation();
                                     const blocked = await checkBlockStatus(c.otherId);
                                     setSidebarMenu({
@@ -1120,7 +1200,6 @@ export default function ConversationDetail() {
                                     {c.unreadCount > 99 ? '99+' : c.unreadCount}
                                 </span>
                             )}
-                            {/* optional blocked indicator */}
                             {c.blocked && (
                                 <span className="conversation-sidebar-blocked" title="你已拉黑此用户">
                                     已拉黑
@@ -1181,6 +1260,8 @@ export default function ConversationDetail() {
                             );
                         }
 
+                        const hasPreview = msg.blogPreview && msg.blogPreview.blogId;
+
                         return (
                             <div
                                 key={msg.id}
@@ -1196,9 +1277,7 @@ export default function ConversationDetail() {
                                             '/imgs/loginandwelcomepanel/1.png'
                                         }
                                         alt="avatar"
-                                        className={`conversation-detail-msg-avatar${
-                                            !isSelf ? ' clickable' : ''
-                                        }`}
+                                        className={`conversation-detail-msg-avatar${!isSelf ? ' clickable' : ''}`}
                                         title={!isSelf ? '查看主页' : undefined}
                                         onClick={!isSelf ? () => openProfile(msg.senderId) : undefined}
                                         onError={(ev) => {
@@ -1213,6 +1292,7 @@ export default function ConversationDetail() {
                                 </div>
 
                                 <div className="conversation-detail-msgtext">
+                                    {/* 文本 / 媒体 */}
                                     {msg?.type === 'IMAGE' && msg?.mediaUrl ? (
                                         <img
                                             className="conversation-detail-msgmedia"
@@ -1238,6 +1318,49 @@ export default function ConversationDetail() {
                                                 ? '[视频]'
                                                 : '')
                                     )}
+
+                                    {/* 博客预览卡片 */}
+                                    {hasPreview && (
+                                        <div className="pm-blog-preview-card">
+                                            <div className="pm-blog-preview-cover">
+                                                {msg.blogPreview.coverImageUrl ? (
+                                                    <img
+                                                        src={toAbsUrl(msg.blogPreview.coverImageUrl)}
+                                                        alt={msg.blogPreview.title || '封面'}
+                                                        onError={e => { e.target.onerror = null; e.target.src = ''; }}
+                                                    />
+                                                ) : (
+                                                    <div className="pm-blog-preview-cover-placeholder">
+                                                        博客
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="pm-blog-preview-body">
+                                                <div className="pm-blog-preview-title">
+                                                    {msg.blogPreview.title || '博客'}
+                                                </div>
+                                                <div className="pm-blog-preview-meta">
+                                                    <span className="pm-blog-preview-author">
+                                                        {msg.blogPreview.authorNickname || ''}
+                                                    </span>
+                                                    {msg.blogPreview.createdAt && (
+                                                        <span className="pm-blog-preview-time">
+                                                            {new Date(msg.blogPreview.createdAt).toLocaleString()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="pm-blog-preview-actions">
+                                                    <a
+                                                        href={msg.blogPreview.url || '#'}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                    >
+                                                        查看原文
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="conversation-detail-msgtime">
@@ -1249,7 +1372,6 @@ export default function ConversationDetail() {
                         );
                     })}
 
-                    {/* 右下角“新消息”提示按钮 */}
                     {newTip.visible && newTip.count > 0 && (
                         <button
                             type="button"
@@ -1316,7 +1438,6 @@ export default function ConversationDetail() {
                         发送
                     </button>
 
-                    {/* 隐藏文件输入框 */}
                     <input
                         ref={imageInputRef}
                         type="file"
@@ -1333,7 +1454,6 @@ export default function ConversationDetail() {
                     />
                 </form>
 
-                {/* 上传进度条 */}
                 {uploading && (
                     <div
                         className="conversation-detail-uploadprogress"
@@ -1348,7 +1468,6 @@ export default function ConversationDetail() {
                 )}
             </div>
 
-            {/* 右键菜单（消息） */}
             {menu.visible && menu.msg && (
                 <div
                     className="msg-context-menu"
@@ -1365,7 +1484,6 @@ export default function ConversationDetail() {
                 </div>
             )}
 
-            {/* 侧边栏头像右键菜单（拉黑/取消拉黑） */}
             {sidebarMenu.visible && sidebarMenu.user && (
                 <div
                     className="sidebar-context-menu"
@@ -1380,7 +1498,6 @@ export default function ConversationDetail() {
                         borderRadius: 4
                     }}
                     onClick={(e) => {
-                        // prevent outer click handlers from immediately closing menu
                         e.stopPropagation();
                     }}
                 >
@@ -1388,7 +1505,6 @@ export default function ConversationDetail() {
                         onClick={async () => {
                             const targetId = sidebarMenu.user.otherId;
                             const result = await toggleBlockUser(targetId);
-                            // reflect toggled state in menu
                             setSidebarMenu(s => ({ ...s, visible: false, user: null, blocked: !!result }));
                         }}
                     >
