@@ -68,7 +68,12 @@ export default function ArticleCard({ post, className }) {
         <div className="home-article-title">{post.title}</div>
         <div className="home-article-preview">{preview}</div>
         <div className="home-article-footer">
-          {avatar && <img src={avatar} alt="avatar" className="home-article-author-avatar" />}
+          {avatar && <img
+            src={avatar}
+            alt="author"
+            className="home-article-author-avatar"
+            style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', display: 'inline-block' }}
+          />}
           <span>{author}</span>
           {created && <span style={{ color:'#9aa3b2' }}>{new Date(created).toLocaleDateString()}</span>}
           {/* 阅读量展示：位于点赞评论左侧 */}
